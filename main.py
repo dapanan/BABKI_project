@@ -1,10 +1,6 @@
-from application import Application
-
-
-def main() -> None:
-    app = Application()
-    app.run()
-
+import arcade
+from application import GameWindow
 
 if __name__ == "__main__":
-    main()
+    window = GameWindow()
+    arcade.run()
