@@ -4,9 +4,6 @@ import math
 
 
 class Coin:
-    SIZE = 100
-    RADIUS = SIZE / 2
-
     def __init__(
             self,
             x: float,
@@ -24,11 +21,14 @@ class Coin:
         self.sprite.center_y = y
         self.sprite.scale = self.scale
         self.sprite.texture = sprites["heads"]
+        # ВАЖНО: Радиус теперь вычисляется ТОЧНО по ширине спрайта
+        # Это гарантирует, что физический круг совпадает с картинкой 1 в 1
+        # (self.sprite.width это текущая ширина картинки с учетом scale)
+        self.radius = self.sprite.width / 2
 
         # Физика
         self.vx = 0.0
         self.vy = 0.0
-        self.radius = self.RADIUS * self.scale
 
         # Анимация полета
         self.anim = []
@@ -41,12 +41,12 @@ class Coin:
         self.last_outcome_value = 0
 
     def update(self, dt: float, width: int, height: int, other_coins: list) -> None:
-        # Если монетка летит
+        # 1. ЛОГИКА ПОЛЕТА (is_moving = True)
         if self.is_moving:
-            # Двигаем монетку
             self.sprite.center_x += self.vx * dt
             self.sprite.center_y += self.vy * dt
 
+            # Границы экрана (Ограничение, но не посадка)
             if self.sprite.left < 0:
                 self.sprite.left = 0
             elif self.sprite.right > width:
@@ -57,7 +57,7 @@ class Coin:
             elif self.sprite.top > height:
                 self.sprite.top = height
 
-            # Логика анимации вращения
+            # Анимация
             if self.anim:
                 self.anim_timer += dt
                 if self.anim_timer >= self.anim_speed:
@@ -66,26 +66,52 @@ class Coin:
                     if self.anim_index < len(self.anim):
                         self.sprite.texture = self.anim[self.anim_index]
                     else:
-                        # Анимация закончилась -> теперь падаем
                         self.land()
             else:
-                # Если картинок для анимации нет, сразу падаем
                 self.land()
 
-        # Физика на земле (когда монетка стоит)
+        # 2. ЛОГИКА НА ЗЕМЛЕ (is_moving = False) - ОПТИМИЗИРОВАННАЯ ФИЗИКА
         else:
-            # Столкновения с другими монетами (расталкивание)
+            # Применяем трение, чтобы монетки останавливались после столкновений
+            # Это делает движение реалистичнее и предотвращает дрожание
+            self.vx *= 0.90
+            self.vy *= 0.90
+
+            # Если скорость очень маленькая, зануляем её полностью (оптимизация CPU)
+            if abs(self.vx) < 0.5: self.vx = 0
+            if abs(self.vy) < 0.5: self.vy = 0
+
+            # Двигаем монетку (инерция)
+            self.sprite.center_x += self.vx * dt
+            self.sprite.center_y += self.vy * dt
+
+            # Оптимизированная проверка столкновений с другими монетками
+            # Мы проверяем только те монетки, которые тоже не летят
             for other in other_coins:
                 if other is not self and not other.is_moving:
+
+                    # Вектор разницы позиций
                     dx = self.sprite.center_x - other.sprite.center_x
                     dy = self.sprite.center_y - other.sprite.center_y
-                    dist = math.sqrt(dx * dx + dy * dy)
+
+                    # Считаем квадрат расстояния (быстро)
+                    dist_sq = dx * dx + dy * dy
+
+                    # Сумма радиусов
                     min_dist = self.radius + other.radius
 
-                    if dist < min_dist and dist > 0:
+                    # Если квадрат расстояния меньше квадрата радиуса -> есть столкновение
+                    # Мы избегаем math.sqrt, пока это не нужно
+                    if dist_sq < (min_dist * min_dist) and dist_sq > 0:
+                        # Вот здесь точно есть столкновение, считаем точную дистанцию
+                        dist = math.sqrt(dist_sq)
                         overlap = min_dist - dist
+
+                        # Нормаль вектора (направление отталкивания)
                         nx = dx / dist
                         ny = dy / dist
+
+                        # Раздвигаем монетки в разные стороны (каждую на половину перекрытия)
                         move_x = nx * overlap * 0.5
                         move_y = ny * overlap * 0.5
 
@@ -94,24 +120,36 @@ class Coin:
                         other.sprite.center_x -= move_x
                         other.sprite.center_y -= move_y
 
-            # Границы экрана (для стоячей монетки)
+                        # Передаем немного импульса (чтобы они отскакивали)
+                        # Это небольшой коэффициент отталкивания
+                        bounce = 20.0
+                        self.vx += nx * bounce
+                        self.vy += ny * bounce
+                        other.vx -= nx * bounce
+                        other.vy -= ny * bounce
+
+            # Границы экрана для стоячей монетки
             if self.sprite.left < 0:
                 self.sprite.left = 0
+                self.vx *= -0.5  # Отскок от стены с потерей энергии
             elif self.sprite.right > width:
                 self.sprite.right = width
+                self.vx *= -0.5
 
             if self.sprite.bottom < 0:
                 self.sprite.bottom = 0
+                self.vy *= -0.5
             elif self.sprite.top > height:
                 self.sprite.top = height
+                self.vy *= -0.5
 
     def land(self) -> None:
+        """Вызывается, когда монетка заканчивает полет"""
         self.is_moving = False
         self.vx = 0
         self.vy = 0
         self.anim = []
 
-        # Результат: Орел или Решка
         is_heads = random.random() < 0.5
 
         if is_heads:
@@ -134,6 +172,10 @@ class Coin:
 
     def hit(self, dx: int, dy: int) -> None:
         self.is_moving = True
+
+        # Убираем старую скорость, чтобы не суммировалась с новой
+        self.vx = 0
+        self.vy = 0
 
         if abs(dx) < 20 and abs(dy) < 20:
             angle = random.uniform(0, 2 * math.pi)

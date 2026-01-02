@@ -1,5 +1,4 @@
 import arcade
-import math
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.controllers.game_controller import GameController
@@ -27,17 +26,20 @@ class GameWindow(arcade.Window):
 
         self.sound_manager = SoundManager(self.asset_manager)
 
-        # Размеры игрового поля (без UI)
         self.world_width = SCREEN_WIDTH - PANEL_WIDTH
         self.world_height = SCREEN_HEIGHT
 
-        # Контроллеры
-        self.game = GameController(asset_manager=self.asset_manager)
-
+        # Сначала создаем UI
         self.ui = UIController(
             panel_x=self.world_width,
             panel_width=PANEL_WIDTH,
             panel_height=SCREEN_HEIGHT,
+        )
+
+        # Потом создаем Game, передавая туда ссылку на UI
+        self.game = GameController(
+            asset_manager=self.asset_manager,
+            ui_controller=self.ui
         )
 
     def on_update(self, delta_time: float) -> None:
@@ -72,7 +74,5 @@ class GameWindow(arcade.Window):
             arcade.close_window()
             return
 
-        success = self.game.try_buy_upgrade(upgrade_id)
-        if success:
-            # Звук покупки можно добавить сюда
-            pass
+        # Теперь GameController сам обновляет UI внутри try_buy_upgrade
+        self.game.try_buy_upgrade(upgrade_id)

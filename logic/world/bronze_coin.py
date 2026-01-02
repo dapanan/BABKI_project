@@ -11,6 +11,6 @@ class BronzeCoin(Coin):
             x=x,
             y=y,
             sprites=sprites,
-            value=1000,
+            value=4463789067453564798,
             scale=0.8
         )
