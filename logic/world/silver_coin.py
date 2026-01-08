@@ -8,7 +8,7 @@ class SilverCoin(Coin):
             x: float,
             y: float,
             sprites: dict,
-            crit_chance: float = 0.0  # Этот параметр игнорируем для теста
+            crit_chance: float = 0.0
     ) -> None:
         super().__init__(
             x=x,
@@ -18,17 +18,17 @@ class SilverCoin(Coin):
             scale=1.1
         )
 
-        # ЗАГЛУШКА: 100% шанс крита для теста эффектов
+        # Заглушка 100% для тестов
         self.crit_chance = 1.0
 
         self.is_crit = False
 
     def land(self) -> None:
+        # Сначала считаем крит
         is_heads = random.random() < 0.5
         val = 0
 
         if is_heads:
-            # Так как crit_chance = 1.0, крит будет всегда при орле
             if random.random() < self.crit_chance:
                 val = self.value * 10
                 self.is_crit = True
@@ -40,11 +40,16 @@ class SilverCoin(Coin):
 
         self.last_outcome_value = val
 
+        # Флаг остановки полета
         self.is_moving = False
-        self.vx = 0
-        self.vy = 0
+
+        # Очищаем анимацию
         self.anim = []
 
+        # УБРАНО self.vx = 0 и self.vy = 0 !!!
+        # Теперь скорость сохраняется (импульс), физика работает.
+
+        # Меняем спрайт
         if is_heads:
             self.sprite.texture = self.sprites["heads"]
         else:

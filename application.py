@@ -24,22 +24,23 @@ class GameWindow(arcade.Window):
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()
 
-        self.sound_manager = SoundManager(self.asset_manager)
+        # ИСПРАВЛЕНИЕ: Убрал аргумент self.asset_manager
+        self.sound_manager = SoundManager()
+        self.sound_manager.load_all()
 
         self.world_width = SCREEN_WIDTH - PANEL_WIDTH
         self.world_height = SCREEN_HEIGHT
 
-        # Сначала создаем UI
         self.ui = UIController(
             panel_x=self.world_width,
             panel_width=PANEL_WIDTH,
             panel_height=SCREEN_HEIGHT,
         )
 
-        # Потом создаем Game, передавая туда ссылку на UI
         self.game = GameController(
             asset_manager=self.asset_manager,
-            ui_controller=self.ui
+            ui_controller=self.ui,
+            sound_manager=self.sound_manager
         )
 
     def on_update(self, delta_time: float) -> None:
@@ -51,16 +52,27 @@ class GameWindow(arcade.Window):
         self.game.draw()
         self.ui.draw(balance_value=self.game.balance.get())
 
+    def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
+        self.game.on_mouse_motion(x, y, dx, dy)
+
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int) -> None:
+        if button == arcade.MOUSE_BUTTON_RIGHT:
+            self.game.on_mouse_press_rmb(x, y)
+            return
+
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
 
         if x > self.world_width:
             self.ui.on_mouse_press(x, y)
         else:
-            self.game.on_mouse_press(x, y)
+            self.game.on_mouse_press(x, y, button)
 
     def on_mouse_release(self, x: int, y: int, button: int, modifiers: int) -> None:
+        if button == arcade.MOUSE_BUTTON_RIGHT:
+            self.game.on_mouse_release_rmb(x, y)
+            return
+
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
 
@@ -74,5 +86,4 @@ class GameWindow(arcade.Window):
             arcade.close_window()
             return
 
-        # Теперь GameController сам обновляет UI внутри try_buy_upgrade
         self.game.try_buy_upgrade(upgrade_id)

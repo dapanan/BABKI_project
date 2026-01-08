@@ -25,7 +25,6 @@ class UIController:
         btn_w = panel_width - pad * 2
         start_y = panel_height - 170
 
-        # Используем метод _format_text сразу при инициализации
         self._buttons = [
             _UiButtonStub("buy_bronze_coin", panel_x + pad, start_y, btn_w, btn_h,
                           self._format_button_text("Купить бронзовую", 50), 50),
@@ -33,71 +32,83 @@ class UIController:
                           self._format_button_text("Купить серебряную", 200), 200),
             _UiButtonStub("buy_gold_coin", panel_x + pad, start_y - 168, btn_w, btn_h,
                           self._format_button_text("Купить золотую", 1000), 1000),
-            _UiButtonStub("silver_crit_upgrade", panel_x + pad, start_y - 252, btn_w, btn_h,
+
+            # НОВАЯ КНОПКА: Взять золотую на ПКМ
+            _UiButtonStub("grab_upgrade", panel_x + pad, start_y - 252, btn_w, btn_h,
+                          "ПКМ Золото (500)", 500),
+
+            _UiButtonStub("silver_crit_upgrade", panel_x + pad, start_y - 336, btn_w, btn_h,
                           self._format_button_text("Крит серебра", 500, 1), 500),
-            _UiButtonStub("finish_game", panel_x + pad, start_y - 336, btn_w, btn_h, "Закончить игру", 0),
+            _UiButtonStub("finish_game", panel_x + pad, start_y - 420, btn_w, btn_h, "Закончить игру", 0),
         ]
 
         self._enabled = {b.upgrade_id: True for b in self._buttons}
         self._pressed_id: Optional[str] = None
         self._pressed_down_id: Optional[str] = None
 
+        # Состояния для новой кнопки
+        self._has_gold = False
+        self._grab_purchased = False
+
     def _format_number(self, num: int) -> str:
-        """Форматирует числа: 1000 -> 1.0K ... 1e33 -> 1.0Dc"""
-        if num == 0:
-            return "0"
-
-        # Суффиксы до Дециллиона (10^33)
+        if num == 0: return "0"
         suffixes = ['', 'K', 'M', 'B', 'T', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc']
-
         magnitude = 0
         temp_num = abs(float(num))
-
-        # Определяем порядок числа
         while temp_num >= 1000 and magnitude < len(suffixes) - 1:
             magnitude += 1
             temp_num /= 1000.0
-
-        # Формируем строку
         formatted_val = f"{temp_num:.1f}{suffixes[magnitude]}"
         return formatted_val
 
     def _format_button_text(self, name: str, cost: int, level: int = 0) -> str:
-        """Собирает текст кнопки с сокращением цены"""
         cost_str = self._format_number(cost)
         if level > 0:
             return f"{name} LvL {level} ({cost_str})"
         return f"{name} ({cost_str})"
 
     def update_button(self, upgrade_id: str, cost: int, level: int = 0, name: str = None) -> None:
-        """
-        Обновляет текст кнопки.
-        Если name не передан, пытается найти старое имя в текущем заголовке (хак для простоты)
-        или просто обновляет цену, если name уже зашит в логику.
-        """
-        # Список базовых имен для простоты обновления
         base_names = {
             "buy_bronze_coin": "Купить бронзовую",
             "buy_silver_coin": "Купить серебряную",
             "buy_gold_coin": "Купить золотую",
             "silver_crit_upgrade": "Крит серебра",
         }
-
         if name is None:
             name = base_names.get(upgrade_id, upgrade_id)
 
         new_title = self._format_button_text(name, cost, level)
-
         for b in self._buttons:
             if b.upgrade_id == upgrade_id:
                 b.title = new_title
                 b.base_cost = cost
                 break
 
+    def update_grab_state(self, has_gold: bool, purchased: bool) -> None:
+        """Обновляет состояние кнопки захвата"""
+        self._has_gold = has_gold
+        self._grab_purchased = purchased
+
     def update(self, balance_value: int) -> None:
         for b in self._buttons:
             if b.upgrade_id == "finish_game":
                 self._enabled[b.upgrade_id] = True
+
+            elif b.upgrade_id == "grab_upgrade":
+                # Кнопка активна, если золото есть, апгрейд не куплен и денег хватает
+                if self._has_gold and not self._grab_purchased:
+                    self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                else:
+                    self._enabled[b.upgrade_id] = False
+
+                # Меняем текст, если уже куплено
+                if self._grab_purchased:
+                    b.title = "ПКМ Золото (Куплено)"
+                elif not self._has_gold:
+                    b.title = "ПКМ Золото (Нет золота)"
+                else:
+                    b.title = f"ПКМ Золото ({self._format_number(b.base_cost)})"
+
             else:
                 self._enabled[b.upgrade_id] = balance_value >= b.base_cost
 
@@ -121,7 +132,7 @@ class UIController:
             arcade.color.DARK_GRAY
         )
 
-        # Баланс (с сокращением до Decillion)
+        # Баланс
         formatted_balance = self._format_number(balance_value)
         arcade.draw_text(
             f"Баланс: {formatted_balance}",
