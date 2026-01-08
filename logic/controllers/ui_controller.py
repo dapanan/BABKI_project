@@ -40,6 +40,8 @@ class UIController:
             _UiButtonStub("silver_crit_upgrade", panel_x + pad, start_y - 336, btn_w, btn_h,
                           self._format_button_text("Крит серебра", 500, 1), 500),
             _UiButtonStub("finish_game", panel_x + pad, start_y - 420, btn_w, btn_h, "Закончить игру", 0),
+
+            _UiButtonStub("open_settings", panel_x + pad, start_y - 504, btn_w, btn_h, "Настройки", 0),
         ]
 
         self._enabled = {b.upgrade_id: True for b in self._buttons}
@@ -91,7 +93,7 @@ class UIController:
 
     def update(self, balance_value: int) -> None:
         for b in self._buttons:
-            if b.upgrade_id == "finish_game":
+            if b.upgrade_id in ("finish_game", "open_settings"):
                 self._enabled[b.upgrade_id] = True
 
             elif b.upgrade_id == "grab_upgrade":
