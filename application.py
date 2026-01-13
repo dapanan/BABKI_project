@@ -19,7 +19,7 @@ class GameWindow(arcade.Window):
             update_rate=1 / 60,
         )
 
-        arcade.set_background_color(arcade.color.WHITE)
+        self.background_color = arcade.color.WHITE
 
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()

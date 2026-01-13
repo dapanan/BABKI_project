@@ -12,6 +12,7 @@ class _UiButtonStub:
     h: float
     title: str
     base_cost: int
+    text_obj: arcade.Text = None  # Добавляем объект текста
 
 
 class UIController:
@@ -44,6 +45,10 @@ class UIController:
             _UiButtonStub("finish_game", panel_x + pad, start_y - 504, btn_w, btn_h, "Закончить игру", 0),
         ]
 
+        # Инициализируем объекты текста для кнопок (Arcade 3.10)
+        for b in self._buttons:
+            b.text_obj = arcade.Text(b.title, b.x + 14, b.y + 22, arcade.color.BLACK, 13)
+
         self._enabled = {b.upgrade_id: True for b in self._buttons}
         self._pressed_id: Optional[str] = None
         self._pressed_down_id: Optional[str] = None
@@ -51,6 +56,12 @@ class UIController:
         self._has_gold = False
         self._grab_purchased = False
         self._explosion_purchased = False
+
+        # Статичные текстовые объекты
+        self.header_text = arcade.Text("Апгрейды", self.panel_x + 16, self.panel_height - 90,
+                                       arcade.color.BLACK, 20)
+        self.balance_text = arcade.Text("", 0, 0, arcade.color.WHITE, 28,
+                                        anchor_x="right", anchor_y="center")
 
     def _format_number(self, num: int) -> str:
         if num == 0: return "0"
@@ -84,6 +95,7 @@ class UIController:
             if b.upgrade_id == upgrade_id:
                 b.title = new_title
                 b.base_cost = cost
+                # Текст обновится автоматически в методе draw
                 break
 
     def update_grab_state(self, has_gold: bool, purchased: bool) -> None:
@@ -151,24 +163,13 @@ class UIController:
 
         # Баланс
         formatted_balance = self._format_number(balance_value)
-        arcade.draw_text(
-            f"Баланс: {formatted_balance}",
-            self.panel_x + self.panel_width - 20,
-            self.panel_height - (header_height / 2),
-            arcade.color.WHITE,
-            28,
-            anchor_x="right",
-            anchor_y="center",
-        )
+        self.balance_text.text = f"Баланс: {formatted_balance}"
+        self.balance_text.x = self.panel_x + self.panel_width - 20
+        self.balance_text.y = self.panel_height - (header_height / 2)
+        self.balance_text.draw()
 
         # Заголовок
-        arcade.draw_text(
-            "Апгрейды",
-            self.panel_x + 16,
-            self.panel_height - 90,
-            arcade.color.BLACK,
-            20
-        )
+        self.header_text.draw()
 
         # Кнопки
         for b in self._buttons:
@@ -184,7 +185,13 @@ class UIController:
             arcade.draw_lrbt_rectangle_outline(b.x, b.x + b.w, y, y + b.h, border, 2)
 
             color = arcade.color.BLACK if enabled else arcade.color.DARK_GRAY
-            arcade.draw_text(b.title, b.x + 14, y + 22, color, 13)
+
+            # Обновляем текст кнопки и отрисовываем его
+            b.text_obj.text = b.title
+            b.text_obj.x = b.x + 14
+            b.text_obj.y = y + 22
+            b.text_obj.color = color
+            b.text_obj.draw()
 
     def _hit_test(self, x: int, y: int) -> Optional[str]:
         for b in self._buttons:

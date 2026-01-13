@@ -47,10 +47,13 @@ class SilverCoin(Coin):
         self.anim = []
 
         # УБРАНО self.vx = 0 и self.vy = 0 !!!
-        # Теперь скорость сохраняется (импульс), физика работает.
 
         # Меняем спрайт
         if is_heads:
             self.sprite.texture = self.sprites["heads"]
         else:
             self.sprite.texture = self.sprites["tails"]
+
+        # --- ВОТ ЧТО ТЫ ЗАБЫЛ ДОБАВИТЬ ---
+        self.landed = True
+        # ---------------------------------

@@ -89,15 +89,13 @@ class AssetManager:
         })
 
     def _create_pil_texture(self, color) -> arcade.Texture:
-        """Создает текстуру заданного цвета используя Pillow"""
         # Создаем изображение 100x100
         pil_image = Image.new("RGBA", (100, 100), (int(color[0]), int(color[1]), int(color[2]), 255))
 
-        # Рисуем простую рамку, чтобы было видно, что это заглушка
         draw = ImageDraw.Draw(pil_image)
         draw.rectangle([0, 0, 99, 99], outline=(255, 255, 255, 255), width=5)
 
-        return arcade.Texture(pil_image)
+        return arcade.Texture(image=pil_image)
 
     def is_loaded(self) -> bool:
         return self._loaded
