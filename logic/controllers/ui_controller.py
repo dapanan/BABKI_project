@@ -32,23 +32,25 @@ class UIController:
                           self._format_button_text("Купить серебряную", 200), 200),
             _UiButtonStub("buy_gold_coin", panel_x + pad, start_y - 168, btn_w, btn_h,
                           self._format_button_text("Купить золотую", 1000), 1000),
-
-            # НОВАЯ КНОПКА: Взять золотую на ПКМ
             _UiButtonStub("grab_upgrade", panel_x + pad, start_y - 252, btn_w, btn_h,
                           "ПКМ Золото (500)", 500),
 
-            _UiButtonStub("silver_crit_upgrade", panel_x + pad, start_y - 336, btn_w, btn_h,
+            # НОВАЯ КНОПКА
+            _UiButtonStub("gold_explosion_upgrade", panel_x + pad, start_y - 336, btn_w, btn_h,
+                          "Золотой взрыв (2000)", 2000),
+
+            _UiButtonStub("silver_crit_upgrade", panel_x + pad, start_y - 420, btn_w, btn_h,
                           self._format_button_text("Крит серебра", 500, 1), 500),
-            _UiButtonStub("finish_game", panel_x + pad, start_y - 420, btn_w, btn_h, "Закончить игру", 0),
+            _UiButtonStub("finish_game", panel_x + pad, start_y - 504, btn_w, btn_h, "Закончить игру", 0),
         ]
 
         self._enabled = {b.upgrade_id: True for b in self._buttons}
         self._pressed_id: Optional[str] = None
         self._pressed_down_id: Optional[str] = None
 
-        # Состояния для новой кнопки
         self._has_gold = False
         self._grab_purchased = False
+        self._explosion_purchased = False
 
     def _format_number(self, num: int) -> str:
         if num == 0: return "0"
@@ -85,9 +87,19 @@ class UIController:
                 break
 
     def update_grab_state(self, has_gold: bool, purchased: bool) -> None:
-        """Обновляет состояние кнопки захвата"""
         self._has_gold = has_gold
         self._grab_purchased = purchased
+
+    def update_explosion_state(self, purchased: bool) -> None:
+        self._explosion_purchased = purchased
+
+    def set_button_disabled(self, upgrade_id: str, title: str) -> None:
+        """Метод для блокировки кнопки и смены текста"""
+        for b in self._buttons:
+            if b.upgrade_id == upgrade_id:
+                b.title = title
+                self._enabled[upgrade_id + "_bought"] = True
+                break
 
     def update(self, balance_value: int) -> None:
         for b in self._buttons:
@@ -95,19 +107,24 @@ class UIController:
                 self._enabled[b.upgrade_id] = True
 
             elif b.upgrade_id == "grab_upgrade":
-                # Кнопка активна, если золото есть, апгрейд не куплен и денег хватает
                 if self._has_gold and not self._grab_purchased:
                     self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                 else:
                     self._enabled[b.upgrade_id] = False
 
-                # Меняем текст, если уже куплено
                 if self._grab_purchased:
                     b.title = "ПКМ Золото (Куплено)"
                 elif not self._has_gold:
                     b.title = "ПКМ Золото (Нет золота)"
                 else:
                     b.title = f"ПКМ Золото ({self._format_number(b.base_cost)})"
+
+            elif b.upgrade_id == "gold_explosion_upgrade":
+                # Кнопка доступна только если не куплена и хватает денег
+                if self._explosion_purchased:
+                    self._enabled[b.upgrade_id] = False
+                else:
+                    self._enabled[b.upgrade_id] = balance_value >= b.base_cost
 
             else:
                 self._enabled[b.upgrade_id] = balance_value >= b.base_cost

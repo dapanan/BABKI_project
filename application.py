@@ -24,9 +24,8 @@ class GameWindow(arcade.Window):
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()
 
-        # ИСПРАВЛЕНИЕ: Убрал аргумент self.asset_manager
         self.sound_manager = SoundManager()
-        self.sound_manager.load_all()
+        self.sound_manager.load_all()  # <--- ВАЖНО: Загружаем звуки
 
         self.world_width = SCREEN_WIDTH - PANEL_WIDTH
         self.world_height = SCREEN_HEIGHT
@@ -40,7 +39,7 @@ class GameWindow(arcade.Window):
         self.game = GameController(
             asset_manager=self.asset_manager,
             ui_controller=self.ui,
-            sound_manager=self.sound_manager
+            sound_manager=self.sound_manager  # Передаем звуки
         )
 
     def on_update(self, delta_time: float) -> None:

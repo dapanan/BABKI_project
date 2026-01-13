@@ -3,6 +3,9 @@ import random
 import math
 
 
+# ИМПОРТ УДАЛЕН СВЕРХУ, чтобы не было циклической ошибки
+
+
 class Coin:
     def __init__(
             self,
@@ -38,16 +41,25 @@ class Coin:
         # Состояние
         self.is_moving = False
         self.last_outcome_value = 0
-
-        # Флаг приземления (для звука)
         self.landed = False
         self.fixed_outcome_texture = None
 
+        # Для звуков и эффектов
+        self.needs_toss_sound = False
+        self.explosion_chance = 0.0
+        self.victims_to_flip = []
+        self.just_landed = False
+
     def update(self, dt: float, width: int, height: int, other_coins: list) -> None:
+        # ИМПОРТ ВНУТРИ МЕТОДА РЕШАЕТ ЦИКЛ
+        from logic.world.gold_coin import GoldCoin
+
+        # --- 1. ПОЛЕТ (Сбор жертв) ---
         if self.is_moving:
             self.sprite.center_x += self.vx * dt
             self.sprite.center_y += self.vy * dt
 
+            # Границы экрана
             if self.sprite.left < 0:
                 self.sprite.left = 0
             elif self.sprite.right > width:
@@ -58,6 +70,7 @@ class Coin:
             elif self.sprite.top > height:
                 self.sprite.top = height
 
+            # Анимация
             if self.anim:
                 self.anim_timer += dt
                 if self.anim_timer >= self.anim_speed:
@@ -69,16 +82,57 @@ class Coin:
                         self.land()
             else:
                 self.land()
+
+            # СБОР ЖЕРТВ ВЗРЫВА (Только для золота)
+            # Если я золото и падаю -> бью других
+            if self.explosion_chance > 0:
+                for other in other_coins:
+                    if other is not self and not other.is_moving:
+                        # Золото не взрывает другое золото
+                        if isinstance(other, GoldCoin):
+                            continue
+
+                        dx = self.sprite.center_x - other.sprite.center_x
+                        dy = self.sprite.center_y - other.sprite.center_y
+                        dist_sq = dx * dx + dy * dy
+                        min_dist = self.radius + other.radius
+
+                        if dist_sq < (min_dist * min_dist) and dist_sq > 0:
+                            dist = math.sqrt(dist_sq)
+                            overlap = min_dist - dist
+
+                            # Нормаль
+                            nx = dx / dist
+                            ny = dy / dist
+
+                            # Запоминаем жертву
+                            self.victims_to_flip.append({'coin': other, 'nx': nx, 'ny': ny})
+
+        # --- 2. НА ЗЕМЛЕ (Физика и Взрыв) ---
         else:
+            # Трение
             self.vx *= 0.9
             self.vy *= 0.9
 
             if abs(self.vx) < 0.5: self.vx = 0
             if abs(self.vy) < 0.5: self.vy = 0
 
+            # Движение
             self.sprite.center_x += self.vx * dt
             self.sprite.center_y += self.vy * dt
 
+            # ЭФФЕКТ ВЗРЫВА ПРИ ПРИЗЕМЛЕНИИ (Пункт 4 и 5)
+            # Работает только если мы только что коснулись пола
+            if self.just_landed and self.explosion_chance > 0 and isinstance(self, GoldCoin):
+                if random.random() < 0.5:  # Шанс 50%
+                    for victim_data in self.victims_to_flip:
+                        # Отдаем вектор ОТ нас к жертве
+                        victim_data['coin'].hit_by_coin(self, victim_data['nx'], victim_data['ny'])
+
+                # Очищаем список, чтобы больше не взрывало
+                self.victims_to_flip = []
+
+            # Обычная физика столкновений
             for other in other_coins:
                 if other is not self and not other.is_moving:
                     dx = self.sprite.center_x - other.sprite.center_x
@@ -93,17 +147,16 @@ class Coin:
                         nx = dx / dist
                         ny = dy / dist
 
+                        # Анти-клип
                         max_instant_sep = 2.0
                         sep_mag = min(overlap * 0.5, max_instant_sep)
 
-                        move_x = nx * sep_mag
-                        move_y = ny * sep_mag
+                        self.sprite.center_x += sep_mag * nx
+                        self.sprite.center_y += sep_mag * ny
+                        other.sprite.center_x -= sep_mag * nx
+                        other.sprite.center_y -= sep_mag * ny
 
-                        self.sprite.center_x += move_x
-                        self.sprite.center_y += move_y
-                        other.sprite.center_x -= move_x
-                        other.sprite.center_y -= move_y
-
+                        # Отталкивание
                         stiffness = 4.8
                         push = overlap * stiffness
 
@@ -112,6 +165,7 @@ class Coin:
                         other.vx -= nx * push
                         other.vy -= ny * push
 
+            # Границы экрана
             if self.sprite.left < 0:
                 self.sprite.left = 0
                 self.vx *= -0.5
@@ -129,9 +183,8 @@ class Coin:
     def land(self) -> None:
         self.is_moving = False
         self.anim = []
-
-        # ВАЖНО: Устанавливаем флаг приземления (Звук сыграет всегда)
         self.landed = True
+        self.just_landed = True  # Пункт 4 (срабатывает при приземлении)
 
         if self.fixed_outcome_texture:
             self.sprite.texture = self.fixed_outcome_texture
@@ -161,35 +214,18 @@ class Coin:
             )
         arcade.draw_sprite(self.sprite)
 
-    def hit(self, dx: int, dy: int) -> None:
+    def hit_by_coin(self, source_coin, nx, ny) -> None:
+        """
+        Вызывается, когда другая монетка (например, золото) 'ударила' эту.
+        Пункт 1: Жертва должна улететь ОТ источника.
+        source_coin -> Self (nx, ny указывает ОТ Other К Self).
+        Self должна улететь в сторону -nx, -ny.
+        """
         self.is_moving = True
-        self.vx = 0
-        self.vy = 0
+        self.vx = -nx * 600  # Инвертируем вектор (Пункт 1)
+        self.vy = -ny * 600
 
-        # Считаем точное расстояние от клика до центра монетки
-        length = math.sqrt(dx * dx + dy * dy)
-
-        # Мертвая зона в виде круга (20% от радиуса монетки)
-        dead_zone = self.radius * 0.2
-
-        if length < dead_zone:
-            # Если клик попал в центральный круг -> рандомный полет
-            angle = random.uniform(0, 2 * math.pi)
-            self.vx = math.cos(angle) * 600
-            self.vy = math.sin(angle) * 600
-        else:
-            # Если клик снаружи круга -> летим в противоположную сторону
-            # Защита от деления на ноль (на случай dead_zone = 0)
-            if length > 0:
-                self.vx = (-dx / length) * 600
-                self.vy = (-dy / length) * 600
-            else:
-                # Резервный вариант
-                angle = random.uniform(0, 2 * math.pi)
-                self.vx = math.cos(angle) * 600
-                self.vy = math.sin(angle) * 600
-
-        # Выбор анимации
+        # Выбор анимации по новому направлению полета
         if abs(self.vx) > abs(self.vy):
             self.anim = self.sprites.get("right", []) if self.vx > 0 else self.sprites.get("left", [])
         else:
@@ -198,6 +234,36 @@ class Coin:
         self.anim_index = 0
         if self.anim:
             self.sprite.texture = self.anim[0]
+
+        self.needs_toss_sound = True
+
+    def hit(self, dx: int, dy: int) -> None:
+        self.is_moving = True
+        self.vx = 0
+        self.vy = 0
+
+        length = math.sqrt(dx * dx + dy * dy)
+        dead_zone = self.radius * 0.2
+
+        if length < dead_zone:
+            angle = random.uniform(0, 2 * math.pi)
+            self.vx = math.cos(angle) * 600
+            self.vy = math.sin(angle) * 600
+        else:
+            if length > 0:
+                self.vx = (-dx / length) * 600
+                self.vy = (-dy / length) * 600
+
+        if abs(self.vx) > abs(self.vy):
+            self.anim = self.sprites.get("right", []) if self.vx > 0 else self.sprites.get("left", [])
+        else:
+            self.anim = self.sprites.get("up", []) if self.vy > 0 else self.sprites.get("down", [])
+
+        self.anim_index = 0
+        if self.anim:
+            self.sprite.texture = self.anim[0]
+
+        self.needs_toss_sound = True
 
     def check_land_event(self):
         val = self.last_outcome_value
