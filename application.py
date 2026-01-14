@@ -1,4 +1,6 @@
 import arcade
+import os
+import pyglet.font
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.controllers.game_controller import GameController
@@ -23,6 +25,17 @@ class GameWindow(arcade.Window):
 
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()
+        self.asset_manager.load_ui_assets()
+
+        # --- ИСПРАВЛЕНИЕ ШРИФТА: Регистрируем папку в Pyglet ---
+        font_dir = "view/ui/fonts"
+        if not os.path.isabs(font_dir):
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            font_dir = os.path.join(script_dir, font_dir)
+
+        if os.path.exists(font_dir):
+            pyglet.font.add_directory(font_dir)
+            print(f"DEBUG: Pyglet font directory added: {font_dir}")
 
         self.sound_manager = SoundManager()
         self.sound_manager.load_all()  # <--- ВАЖНО: Загружаем звуки
@@ -34,6 +47,7 @@ class GameWindow(arcade.Window):
             panel_x=self.world_width,
             panel_width=PANEL_WIDTH,
             panel_height=SCREEN_HEIGHT,
+            ui_assets=self.asset_manager.ui_assets  # <-- Добавили это
         )
 
         self.game = GameController(

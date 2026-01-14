@@ -12,14 +12,20 @@ class _UiButtonStub:
     h: float
     title: str
     base_cost: int
-    text_obj: arcade.Text = None  # Добавляем объект текста
+    text_obj: arcade.Text = None
 
 
 class UIController:
-    def __init__(self, panel_x: int, panel_width: int, panel_height: int) -> None:
+    def __init__(self, panel_x: int, panel_width: int, panel_height: int, ui_assets: dict) -> None:
         self.panel_x = panel_x
         self.panel_width = panel_width
         self.panel_height = panel_height
+
+        # Сохраняем ассеты
+        self.ui_assets = ui_assets
+        # ВАЖНО: После регистрации папки через pyglet.font.add_directory,
+        # нужно указывать только ИМЯ шрифта без расширения .ttf
+        self.current_font = "RuneScape-ENA"
 
         pad = 16
         btn_h = 64
@@ -36,7 +42,6 @@ class UIController:
             _UiButtonStub("grab_upgrade", panel_x + pad, start_y - 252, btn_w, btn_h,
                           "ПКМ Золото (500)", 500),
 
-            # НОВАЯ КНОПКА
             _UiButtonStub("gold_explosion_upgrade", panel_x + pad, start_y - 336, btn_w, btn_h,
                           "Золотой взрыв (2000)", 2000),
 
@@ -45,9 +50,9 @@ class UIController:
             _UiButtonStub("finish_game", panel_x + pad, start_y - 504, btn_w, btn_h, "Закончить игру", 0),
         ]
 
-        # Инициализируем объекты текста для кнопок (Arcade 3.10)
+        # Инициализируем текстовые объекты с кастомным шрифтом
         for b in self._buttons:
-            b.text_obj = arcade.Text(b.title, b.x + 14, b.y + 22, arcade.color.BLACK, 13)
+            b.text_obj = arcade.Text(b.title, b.x + 14, b.y + 22, arcade.color.BLACK, 19, font_name=self.current_font)
 
         self._enabled = {b.upgrade_id: True for b in self._buttons}
         self._pressed_id: Optional[str] = None
@@ -57,11 +62,11 @@ class UIController:
         self._grab_purchased = False
         self._explosion_purchased = False
 
-        # Статичные текстовые объекты
+        # Текст заголовка тоже с шрифтом
         self.header_text = arcade.Text("Апгрейды", self.panel_x + 16, self.panel_height - 90,
-                                       arcade.color.BLACK, 20)
-        self.balance_text = arcade.Text("", 0, 0, arcade.color.WHITE, 28,
-                                        anchor_x="right", anchor_y="center")
+                                       arcade.color.BLACK, 30, font_name=self.current_font)
+        self.balance_text = arcade.Text("", 0, 0, arcade.color.WHITE, 40,
+                                        anchor_x="right", anchor_y="center", font_name=self.current_font)
 
     def _format_number(self, num: int) -> str:
         if num == 0: return "0"
@@ -95,7 +100,6 @@ class UIController:
             if b.upgrade_id == upgrade_id:
                 b.title = new_title
                 b.base_cost = cost
-                # Текст обновится автоматически в методе draw
                 break
 
     def update_grab_state(self, has_gold: bool, purchased: bool) -> None:
@@ -106,7 +110,6 @@ class UIController:
         self._explosion_purchased = purchased
 
     def set_button_disabled(self, upgrade_id: str, title: str) -> None:
-        """Метод для блокировки кнопки и смены текста"""
         for b in self._buttons:
             if b.upgrade_id == upgrade_id:
                 b.title = title
@@ -171,22 +174,47 @@ class UIController:
         # Заголовок
         self.header_text.draw()
 
-        # Кнопки
+        # КНОПКИ
         for b in self._buttons:
             enabled = self._enabled.get(b.upgrade_id, True)
             is_pressed = (self._pressed_id == b.upgrade_id)
 
             y = b.y - (6 if is_pressed else 0)
 
-            fill = arcade.color.WHITE if enabled else arcade.color.GRAY
-            border = arcade.color.DARK_GRAY
+            texture_to_draw = None
 
-            arcade.draw_lrbt_rectangle_filled(b.x, b.x + b.w, y, y + b.h, fill)
-            arcade.draw_lrbt_rectangle_outline(b.x, b.x + b.w, y, y + b.h, border, 2)
+            if self.ui_assets["btn_normal"]:
+                if not enabled:
+                    texture_to_draw = self.ui_assets["btn_disabled"]
+                elif is_pressed:
+                    texture_to_draw = self.ui_assets["btn_pressed"]
+                else:
+                    texture_to_draw = self.ui_assets["btn_normal"]
 
+            # 2. Рисуем кнопку (ИСПРАВЛЕНО: передаем текстуру позиционно)
+            if texture_to_draw:
+                # ИСПРАВЛЕНИЕ: Просто texture_to_draw без "texture="
+                button_sprite = arcade.Sprite(texture_to_draw)
+
+                # Выставляем размер и позицию
+                button_sprite.width = b.w
+                button_sprite.height = b.h
+                button_sprite.center_x = b.x + b.w / 2
+                button_sprite.center_y = y + b.h / 2
+
+                # Рисуем через список (требование Arcade 3.10+)
+                temp_sprite_list = arcade.SpriteList()
+                temp_sprite_list.append(button_sprite)
+                temp_sprite_list.draw()
+            else:
+                # Фолбэк
+                fill = arcade.color.WHITE if enabled else arcade.color.GRAY
+                arcade.draw_lrbt_rectangle_filled(b.x, b.x + b.w, y, y + b.h, fill)
+                arcade.draw_lrbt_rectangle_outline(b.x, b.x + b.w, y, y + b.h, arcade.color.DARK_GRAY, 2)
+            # ------------------------------------------------
+
+            # Текст
             color = arcade.color.BLACK if enabled else arcade.color.DARK_GRAY
-
-            # Обновляем текст кнопки и отрисовываем его
             b.text_obj.text = b.title
             b.text_obj.x = b.x + 14
             b.text_obj.y = y + 22
