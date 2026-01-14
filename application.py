@@ -94,6 +94,11 @@ class GameWindow(arcade.Window):
             if upgrade_id:
                 self._handle_upgrade(upgrade_id)
 
+    def on_mouse_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int) -> None:
+        # Если мышь над панелью UI (справа)
+        if x > self.world_width:
+            self.ui.on_mouse_scroll(x, y, scroll_x, scroll_y)
+
     def _handle_upgrade(self, upgrade_id: str) -> None:
         if upgrade_id == "finish_game":
             arcade.close_window()
