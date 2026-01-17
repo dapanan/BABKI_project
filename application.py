@@ -26,7 +26,6 @@ class GameWindow(arcade.Window):
         self.asset_manager.load_all()
         self.music_started = False
         self.music_manager = Music()
-        self.music_started = False
 
 
         self.sound_manager = SoundManager()
@@ -47,14 +46,9 @@ class GameWindow(arcade.Window):
             sound_manager=self.sound_manager
         )
 
-def on_update(self, delta_time: float):
-    if not self.music_started:
-        self.music_manager.start()
-        self.music_started = True
-
-    self.game.update(delta_time)
-    self.ui.update(self.game.balance.get())
-
+    def on_update(self, delta_time: float):
+        self.game.update(delta_time)
+        self.ui.update(self.game.balance.get())
 
     def on_draw(self) -> None:
         self.clear()
