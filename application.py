@@ -24,9 +24,8 @@ class GameWindow(arcade.Window):
 
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()
-        self.music_started = False
         self.music_manager = Music()
-
+        self.music_manager.start()
 
         self.sound_manager = SoundManager()
         self.sound_manager.load_all()
