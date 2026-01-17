@@ -3,6 +3,7 @@ from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.controllers.game_controller import GameController
 from logic.controllers.ui_controller import UIController
+from logic.view.music_engine import Music
 
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
@@ -23,8 +24,11 @@ class GameWindow(arcade.Window):
 
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()
+        self.music_started = False
+        self.music_manager = Music()
+        self.music_started = False
 
-        # ИСПРАВЛЕНИЕ: Убрал аргумент self.asset_manager
+
         self.sound_manager = SoundManager()
         self.sound_manager.load_all()
 
@@ -43,9 +47,14 @@ class GameWindow(arcade.Window):
             sound_manager=self.sound_manager
         )
 
-    def on_update(self, delta_time: float) -> None:
-        self.game.update(delta_time)
-        self.ui.update(self.game.balance.get())
+def on_update(self, delta_time: float):
+    if not self.music_started:
+        self.music_manager.start()
+        self.music_started = True
+
+    self.game.update(delta_time)
+    self.ui.update(self.game.balance.get())
+
 
     def on_draw(self) -> None:
         self.clear()

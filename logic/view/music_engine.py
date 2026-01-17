@@ -1,0 +1,32 @@
+import pyglet
+import os
+import random
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MUSIC_FOLDER = os.path.join(BASE_DIR, "music")
+
+class Music:
+    def __init__(self):
+
+        self.music_list = [
+            os.path.join(MUSIC_FOLDER, f)
+            for f in os.listdir(MUSIC_FOLDER)
+            if f.lower().endswith((".mp3", ".wav", ".ogg"))
+        ]
+
+
+        self.player = pyglet.media.Player()
+
+    def play_next_song(self):
+        track = random.choice(self.music_list)
+        source = pyglet.media.load(track, streaming=True)
+        self.player.queue(source)
+        self.player.volume = 0.4
+        self.player.play()
+
+        @self.player.event
+        def on_eos():
+            self.play_next_song()
+
+    def start(self):
+        self.play_next_song()
