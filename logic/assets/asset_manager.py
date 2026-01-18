@@ -34,6 +34,38 @@ class AssetManager:
         """Загружает кнопки и шрифт для интерфейса"""
         ui_base_dir = os.path.join(self.base_dir, "ui")
 
+        # Инициализируем словарь, чтобы ошибка исчезла
+        self.ui_assets = {
+            "btn_normal": None,
+            "btn_pressed": None,
+            "btn_disabled": None,
+            "font_name": "Arial"  # Запасной шрифт
+        }
+
+        # 1. Загрузка кнопок
+        buttons_dir = os.path.join(ui_base_dir, "buttons")
+        if os.path.exists(buttons_dir):
+            self.ui_assets["btn_normal"] = arcade.load_texture(os.path.join(buttons_dir, "normal.png"))
+            self.ui_assets["btn_pressed"] = arcade.load_texture(os.path.join(buttons_dir, "pressed.png"))
+            self.ui_assets["btn_disabled"] = arcade.load_texture(os.path.join(buttons_dir, "disabled.png"))
+            print(f"DEBUG: Loaded UI textures from {buttons_dir}")
+        else:
+            print(f"WARNING: UI buttons folder not found: {buttons_dir}")
+
+        # 2. Загрузка шрифта
+        font_dir = os.path.join(ui_base_dir, "fonts")
+        if os.path.exists(font_dir):
+            font_file = os.path.join(font_dir, "RuneScape-ENA.ttf")
+            if os.path.exists(font_file):
+                self.ui_assets["font_name"] = font_file
+                print(f"DEBUG: Custom font loaded: {font_file}")
+            else:
+                print(f"WARNING: Font file not found: {font_file}")
+
+    def load_ui_assets(self) -> None:
+        """Загружает кнопки и шрифт для интерфейса"""
+        ui_base_dir = os.path.join(self.base_dir, "ui")
+
         # --- 1. Загрузка кнопок (как было) ---
         self.ui_assets = {
             "btn_normal": None,
