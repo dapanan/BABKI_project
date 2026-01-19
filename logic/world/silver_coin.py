@@ -8,14 +8,16 @@ class SilverCoin(Coin):
             x: float,
             y: float,
             sprites: dict,
-            crit_chance: float = 0.0
+            crit_chance: float = 0.0,
+            scale: float = 1.1
+
     ) -> None:
         super().__init__(
             x=x,
             y=y,
             sprites=sprites,
             value=2,
-            scale=1.1
+            scale=scale
         )
 
         # Заглушка 100% для тестов

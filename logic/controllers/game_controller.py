@@ -10,13 +10,20 @@ from logic.economy.balance import Balance
 
 
 class GameController:
-    def __init__(self, asset_manager: AssetManager, ui_controller, sound_manager: SoundManager):
+    def __init__(self, asset_manager: AssetManager, ui_controller, sound_manager: SoundManager,
+                 world_width: int, world_height: int, scale_factor: float):
         self.assets = asset_manager
         self.balance = Balance()
         self.ui = ui_controller
         self.sound_manager = sound_manager
         self.coins = []
         self.particles = []
+
+        # Сохраняем реальные размеры экрана
+        self.width = world_width
+        self.height = world_height
+        # Сохраняем масштаб для монеток
+        self.scale_factor = scale_factor
 
         self.silver_crit_level = 1
 
@@ -45,21 +52,27 @@ class GameController:
         self.spawn_coin("bronze")
 
     def spawn_coin(self, coin_type: str):
-        w = 1920 - 500
-        h = 1080
+        # Используем реальные границы экрана
+        w = self.width
+        h = self.height
 
-        x = random.randint(100, w - 100)
-        y = random.randint(100, h - 100)
+        # Небольшой отступ от краев
+        margin = 100 * self.scale_factor
+        x = random.randint(int(margin), int(w - margin))
+        y = random.randint(int(margin), int(h - margin))
 
         if coin_type == "bronze":
-            coin = BronzeCoin(x, y, self.assets.bronze_coin_sprites)
+            # Базовый масштаб 0.8 умножаем на масштаб экрана
+            coin = BronzeCoin(x, y, self.assets.bronze_coin_sprites, scale=0.8 * self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "silver":
             crit_chance = 0.1 * self.silver_crit_level
-            coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance)
+            # Базовый масштаб 1.1 умножаем на масштаб экрана
+            coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance, scale=1.1 * self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "gold":
-            coin = GoldCoin(x, y, self.assets.gold_coin_sprites)
+            # Базовый масштаб 1.5 умножаем на масштаб экрана
+            coin = GoldCoin(x, y, self.assets.gold_coin_sprites, scale=1.5 * self.scale_factor)
             self.has_gold_coin = True
             # Если апгрейд взрыва куплен, шанс 50%
             if self.gold_explosion_unlocked:
@@ -79,8 +92,8 @@ class GameController:
             return "bronze"
 
     def update(self, dt: float) -> None:
-        width = 1920 - 500
-        height = 1080
+        width = self.width
+        height = self.height
 
         if self.grabbed_coin:
             self.grabbed_coin.sprite.center_x = self.mouse_x

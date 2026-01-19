@@ -75,7 +75,10 @@ class GameWindow(arcade.Window):
         self.game = GameController(
             asset_manager=self.asset_manager,
             ui_controller=self.ui,
-            sound_manager=self.sound_manager
+            sound_manager=self.sound_manager,
+            world_width=self.world_width,      # <--- Передаем реальную ширину
+            world_height=self.world_height,    # <--- Передаем реальную высоту
+            scale_factor=scale_factor         # <--- Передаем масштаб для монеток
         )
 
         print(f"--- SYSTEM INFO ---")
