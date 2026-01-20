@@ -3,9 +3,6 @@ import random
 import math
 
 
-# ИМПОРТ УДАЛЕН СВЕРХУ, чтобы не было циклической ошибки
-
-
 class Coin:
     def __init__(
             self,
@@ -50,9 +47,18 @@ class Coin:
         self.victims_to_flip = []
         self.just_landed = False
 
+        # --- СИСТЕМА ИММУНИТЕТА К ВИСПУ ---
+        self.wisp_immunity_timer = 0.0
+
     def update(self, dt: float, width: int, height: int, other_coins: list) -> None:
-        # ИМПОРТ ВНУТРИ МЕТОДА РЕШАЕТ ЦИКЛ
+        # ИМПОРТ ВНУТРИ МЕТОДА
         from logic.world.gold_coin import GoldCoin
+
+        # Обновляем таймер иммунитета
+        if self.wisp_immunity_timer > 0:
+            self.wisp_immunity_timer -= dt
+            if self.wisp_immunity_timer < 0:
+                self.wisp_immunity_timer = 0
 
         # --- 1. ПОЛЕТ (Сбор жертв) ---
         if self.is_moving:
@@ -84,11 +90,9 @@ class Coin:
                 self.land()
 
             # СБОР ЖЕРТВ ВЗРЫВА (Только для золота)
-            # Если я золото и падаю -> бью других
             if self.explosion_chance > 0:
                 for other in other_coins:
                     if other is not self and not other.is_moving:
-                        # Золото не взрывает другое золото
                         if isinstance(other, GoldCoin):
                             continue
 
@@ -99,13 +103,8 @@ class Coin:
 
                         if dist_sq < (min_dist * min_dist) and dist_sq > 0:
                             dist = math.sqrt(dist_sq)
-                            overlap = min_dist - dist
-
-                            # Нормаль
                             nx = dx / dist
                             ny = dy / dist
-
-                            # Запоминаем жертву
                             self.victims_to_flip.append({'coin': other, 'nx': nx, 'ny': ny})
 
         # --- 2. НА ЗЕМЛЕ (Физика и Взрыв) ---
@@ -121,15 +120,12 @@ class Coin:
             self.sprite.center_x += self.vx * dt
             self.sprite.center_y += self.vy * dt
 
-            # ЭФФЕКТ ВЗРЫВА ПРИ ПРИЗЕМЛЕНИИ (Пункт 4 и 5)
-            # Работает только если мы только что коснулись пола
+            # ЭФФЕКТ ВЗРЫВА ПРИ ПРИЗЕМЛЕНИИ
             if self.just_landed and self.explosion_chance > 0 and isinstance(self, GoldCoin):
-                if random.random() < 0.5:  # Шанс 50%
+                if random.random() < 0.5:
                     for victim_data in self.victims_to_flip:
-                        # Отдаем вектор ОТ нас к жертве
                         victim_data['coin'].hit_by_coin(self, victim_data['nx'], victim_data['ny'])
 
-                # Очищаем список, чтобы больше не взрывало
                 self.victims_to_flip = []
 
             # Обычная физика столкновений
@@ -147,7 +143,6 @@ class Coin:
                         nx = dx / dist
                         ny = dy / dist
 
-                        # Анти-клип
                         max_instant_sep = 2.0
                         sep_mag = min(overlap * 0.5, max_instant_sep)
 
@@ -156,7 +151,6 @@ class Coin:
                         other.sprite.center_x -= sep_mag * nx
                         other.sprite.center_y -= sep_mag * ny
 
-                        # Отталкивание
                         stiffness = 4.8
                         push = overlap * stiffness
 
@@ -184,7 +178,7 @@ class Coin:
         self.is_moving = False
         self.anim = []
         self.landed = True
-        self.just_landed = True  # Пункт 4 (срабатывает при приземлении)
+        self.just_landed = True
 
         if self.fixed_outcome_texture:
             self.sprite.texture = self.fixed_outcome_texture
@@ -217,15 +211,14 @@ class Coin:
     def hit_by_coin(self, source_coin, nx, ny) -> None:
         """
         Вызывается, когда другая монетка (например, золото) 'ударила' эту.
-        Пункт 1: Жертва должна улететь ОТ источника.
-        source_coin -> Self (nx, ny указывает ОТ Other К Self).
-        Self должна улететь в сторону -nx, -ny.
+        nx, ny указывают ОТ Источника К Жертве.
+        Нам нужно, чтобы жертва улетела В ту же сторону (от источника).
         """
         self.is_moving = True
-        self.vx = -nx * 600  # Инвертируем вектор (Пункт 1)
-        self.vy = -ny * 600
+        # УБРАНО отрицание, теперь монетка летит ВПРАВИЛЬНУЮ сторону (от удара)
+        self.vx = nx * 600
+        self.vy = ny * 600
 
-        # Выбор анимации по новому направлению полета
         if abs(self.vx) > abs(self.vy):
             self.anim = self.sprites.get("right", []) if self.vx > 0 else self.sprites.get("left", [])
         else:
@@ -250,6 +243,10 @@ class Coin:
             self.vx = math.cos(angle) * 600
             self.vy = math.sin(angle) * 600
         else:
+            # При клике мышкой мы хотим, чтобы монетка улетела ОТ клика.
+            # dx = mouse_x - coin_x.
+            # Вектор ОТ монетки К мышке это (dx, dy).
+            # Нам нужно УЛЕТЕТЬ ОТ МЫШКИ, значит вектор (-dx, -dy).
             if length > 0:
                 self.vx = (-dx / length) * 600
                 self.vy = (-dy / length) * 600

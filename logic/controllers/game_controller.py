@@ -4,6 +4,7 @@ import math
 from logic.world.gold_coin import GoldCoin
 from logic.world.bronze_coin import BronzeCoin
 from logic.world.silver_coin import SilverCoin
+from logic.world.map_activities.wisp import Wisp
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.economy.balance import Balance
@@ -19,10 +20,8 @@ class GameController:
         self.coins = []
         self.particles = []
 
-        # Сохраняем реальные размеры экрана
         self.width = world_width
         self.height = world_height
-        # Сохраняем масштаб для монеток
         self.scale_factor = scale_factor
 
         self.silver_crit_level = 1
@@ -33,7 +32,10 @@ class GameController:
             "buy_gold_coin": 1000,
             "silver_crit_upgrade": 500,
             "grab_upgrade": 500,
-            "gold_explosion_upgrade": 2000
+            "gold_explosion_upgrade": 2000,
+            "wisp_spawn": 5000,
+            "wisp_speed": 1000,
+            "wisp_size": 1000
         }
 
         self.has_gold_coin = False
@@ -41,40 +43,35 @@ class GameController:
         self.gold_explosion_unlocked = False
         self.grabbed_coin = None
 
+        self.wisp: Wisp | None = None
+        self.wisp_list = arcade.SpriteList()
+
         self.mouse_x = 0
         self.mouse_y = 0
         self.mouse_dx = 0
         self.mouse_dy = 0
-
         self.mouse_velocity_history = []
         self.max_history_frames = 8
 
         self.spawn_coin("bronze")
 
     def spawn_coin(self, coin_type: str):
-        # Используем реальные границы экрана
         w = self.width
         h = self.height
-
-        # Небольшой отступ от краев
         margin = 100 * self.scale_factor
         x = random.randint(int(margin), int(w - margin))
         y = random.randint(int(margin), int(h - margin))
 
         if coin_type == "bronze":
-            # Базовый масштаб 0.8 умножаем на масштаб экрана
             coin = BronzeCoin(x, y, self.assets.bronze_coin_sprites, scale=0.8 * self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "silver":
             crit_chance = 0.1 * self.silver_crit_level
-            # Базовый масштаб 1.1 умножаем на масштаб экрана
             coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance, scale=1.1 * self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "gold":
-            # Базовый масштаб 1.5 умножаем на масштаб экрана
             coin = GoldCoin(x, y, self.assets.gold_coin_sprites, scale=1.5 * self.scale_factor)
             self.has_gold_coin = True
-            # Если апгрейд взрыва куплен, шанс 50%
             if self.gold_explosion_unlocked:
                 coin.explosion_chance = 0.5
             else:
@@ -83,7 +80,6 @@ class GameController:
         self.coins.append(coin)
 
     def _get_coin_type_string(self, coin) -> str:
-        """Вспомогательный метод: возвращает тип монетки строкой ('gold', 'silver', 'bronze')"""
         if isinstance(coin, GoldCoin):
             return "gold"
         elif isinstance(coin, SilverCoin):
@@ -102,40 +98,36 @@ class GameController:
             self.grabbed_coin.vy = 0
 
         for coin in self.coins:
-            if coin is self.grabbed_coin:
-                continue
+            if coin is self.grabbed_coin: continue
 
             coin.update(dt, width, height, self.coins)
 
             outcome = coin.check_land_event()
             if outcome > 0:
                 self.balance.add(outcome)
-
                 is_crit_now = False
                 if isinstance(coin, SilverCoin) and coin.is_crit:
                     is_crit_now = True
                     coin.is_crit = False
-
                 if is_crit_now:
                     self.create_particles(coin.sprite.center_x, coin.sprite.center_y, (192, 192, 192, 255), coin)
 
-            # Проверяем звук ВЗРЫВА/КЛИКА
             if coin.needs_toss_sound:
                 c_type = self._get_coin_type_string(coin)
                 self.sound_manager.play_toss(c_type)
                 coin.needs_toss_sound = False
 
-            # Проверяем приземление для ЗВУКА
             if coin.landed:
                 c_type = self._get_coin_type_string(coin)
                 self.sound_manager.play_land(c_type)
                 coin.landed = False
 
-        # Обновление частиц
+        if self.wisp:
+            self.wisp.update(dt, width, height, self.coins, self.grabbed_coin)
+
         for p in self.particles:
             decay_speed = p.get('decay_speed', 1.0)
             p['life'] -= dt * decay_speed
-
             if 'linked_coin' in p and p['linked_coin'] is not None:
                 p['offset_x'] += p['vx'] * dt
                 p['offset_y'] += p['vy'] * dt
@@ -148,16 +140,14 @@ class GameController:
         self.particles = [p for p in self.particles if p['life'] > 0]
         self.ui.update_grab_state(self.has_gold_coin, self.grab_purchased)
         self.ui.update_explosion_state(self.gold_explosion_unlocked)
+        self.ui.update_wisp_state(self.wisp is not None)
 
     def draw(self) -> None:
         for coin in self.coins:
-            if not coin.is_moving:
-                coin.draw()
-
+            if not coin.is_moving: coin.draw()
         for coin in self.coins:
-            if coin.is_moving:
-                coin.draw()
-
+            if coin.is_moving: coin.draw()
+        self.wisp_list.draw()
         for p in self.particles:
             alpha = int(255 * (p['life'] / 1.0))
             current_color = (p['color'][0], p['color'][1], p['color'][2], alpha)
@@ -165,7 +155,7 @@ class GameController:
 
     def on_mouse_press(self, x: int, y: int, button: int) -> None:
         if button == arcade.MOUSE_BUTTON_LEFT:
-            if x < 1920 - 500:
+            if x < self.width:
                 for coin in self.coins:
                     if not coin.is_moving and coin is not self.grabbed_coin:
                         dx = x - coin.sprite.center_x
@@ -180,13 +170,10 @@ class GameController:
         self.mouse_x = x
         self.mouse_y = y
         self.mouse_velocity_history.append((dx, dy))
-        if len(self.mouse_velocity_history) > self.max_history_frames:
-            self.mouse_velocity_history.pop(0)
+        if len(self.mouse_velocity_history) > self.max_history_frames: self.mouse_velocity_history.pop(0)
 
     def on_mouse_press_rmb(self, x: int, y: int) -> None:
-        if not self.grab_purchased:
-            return
-
+        if not self.grab_purchased: return
         for coin in self.coins:
             if isinstance(coin, GoldCoin) and not coin.is_moving:
                 dx = x - coin.sprite.center_x
@@ -198,31 +185,24 @@ class GameController:
                     coin.vy = 0
                     coin.anim = []
                     coin.fixed_outcome_texture = coin.sprite.texture
-
                     self.mouse_x = x
                     self.mouse_y = y
                     self.mouse_velocity_history = []
                     break
 
     def on_mouse_release_rmb(self, x: int, y: int) -> None:
-        if not self.grabbed_coin:
-            return
-
+        if not self.grabbed_coin: return
         coin = self.grabbed_coin
         self.grabbed_coin = None
-
         avg_dx = 0
         avg_dy = 0
         count = len(self.mouse_velocity_history)
-
         if count > 0:
             total_dx = sum(d[0] for d in self.mouse_velocity_history)
             total_dy = sum(d[1] for d in self.mouse_velocity_history)
             avg_dx = total_dx / count
             avg_dy = total_dy / count
-
         move_threshold = 2.0
-
         if abs(avg_dx) < move_threshold and abs(avg_dy) < move_threshold:
             coin.vx = 0
             coin.vy = 0
@@ -239,13 +219,11 @@ class GameController:
             angle = random.uniform(0, 6.28)
             speed = random.uniform(100, 200)
             size = random.uniform(3, 6)
-
             particle_data = {
                 'x': cx, 'y': cy,
                 'vx': math.cos(angle) * speed, 'vy': math.sin(angle) * speed,
                 'life': 1.0, 'color': base_color, 'size': size
             }
-
             if coin is not None:
                 particle_data['linked_coin'] = coin
                 particle_data['decay_speed'] = 3.0
@@ -254,15 +232,11 @@ class GameController:
                 particle_data['offset_y'] = math.sin(angle) * (p_radius * 0.9)
             else:
                 particle_data['decay_speed'] = 1.0
-
             self.particles.append(particle_data)
 
     def try_buy_upgrade(self, upgrade_id: str) -> bool:
-        if upgrade_id == "finish_game":
-            return True
-
+        if upgrade_id == "finish_game": return True
         cost = self.upgrade_prices.get(upgrade_id, 0)
-
         if self.balance.can_spend(cost):
             self.balance.spend(cost)
             success = True
@@ -277,14 +251,34 @@ class GameController:
                 self.silver_crit_level += 1
             elif upgrade_id == "grab_upgrade":
                 self.grab_purchased = True
-                success = True
             elif upgrade_id == "gold_explosion_upgrade":
                 self.gold_explosion_unlocked = True
-                # Включаем шанс у ВСЕХ существующих золотых монет
                 for coin in self.coins:
-                    if isinstance(coin, GoldCoin):
-                        coin.explosion_chance = 0.5
-                success = True
+                    if isinstance(coin, GoldCoin): coin.explosion_chance = 0.5
+
+            elif upgrade_id == "wisp_spawn":
+                if not self.wisp:
+                    # Спавн с масштабом 0.33 (3 раза меньше)
+                    self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=0.33)
+                    self.wisp_list.append(self.wisp)
+                    success = True
+                else:
+                    success = False
+
+            elif upgrade_id == "wisp_speed":
+                if self.wisp:
+                    self.wisp.upgrade_speed(50)
+                    success = True
+                else:
+                    success = False
+
+            elif upgrade_id == "wisp_size":
+                if self.wisp:
+                    # Увеличиваем масштаб на 0.5
+                    self.wisp.upgrade_scale(0.05)
+                    success = True
+                else:
+                    success = False
 
             new_price = math.ceil(cost * 2.718)
             self.upgrade_prices[upgrade_id] = new_price
@@ -295,9 +289,10 @@ class GameController:
                 self.ui.update_grab_state(self.has_gold_coin, True)
             elif upgrade_id == "gold_explosion_upgrade":
                 self.ui.set_button_disabled("gold_explosion_upgrade", "Золотой взрыв (Куплено)")
+            elif upgrade_id == "wisp_spawn":
+                self.ui.update_wisp_state(True)
             else:
                 self.ui.update_button(upgrade_id, new_price)
 
             return True
-
         return False
