@@ -5,6 +5,7 @@ from logic.world.gold_coin import GoldCoin
 from logic.world.bronze_coin import BronzeCoin
 from logic.world.silver_coin import SilverCoin
 from logic.world.map_activities.wisp import Wisp
+from logic.world.map_activities.multiply_zone import MultiplyZone
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.economy.balance import Balance
@@ -20,6 +21,7 @@ class GameController:
         self.coins = []
         self.particles = []
 
+        # Адаптация под монитор
         self.width = world_width
         self.height = world_height
         self.scale_factor = scale_factor
@@ -35,7 +37,13 @@ class GameController:
             "gold_explosion_upgrade": 2000,
             "wisp_spawn": 5000,
             "wisp_speed": 1000,
-            "wisp_size": 1000
+            "wisp_size": 1000,
+            "spawn_zone_2": 10000,
+            "spawn_zone_5": 50000,
+            "upgrade_zone_2_size": 2000,
+            "upgrade_zone_5_size": 5000,
+            "upgrade_zone_2_mult": 3000,
+            "upgrade_zone_5_mult": 7000
         }
 
         self.has_gold_coin = False
@@ -45,6 +53,12 @@ class GameController:
 
         self.wisp: Wisp | None = None
         self.wisp_list = arcade.SpriteList()
+
+        self.zones: list[MultiplyZone] = []
+
+        # Сохраняем прямые ссылки на зоны, чтобы не искать их по числам
+        self.zone_2: MultiplyZone | None = None
+        self.zone_5: MultiplyZone | None = None
 
         self.mouse_x = 0
         self.mouse_y = 0
@@ -104,7 +118,16 @@ class GameController:
 
             outcome = coin.check_land_event()
             if outcome > 0:
-                self.balance.add(outcome)
+                # === ЛОГИКА ЗОН МНОЖИТЕЛЯ ===
+                total_multiplier = 1.0
+                for zone in self.zones:
+                    if zone.check_collision(coin):
+                        total_multiplier *= zone.multiplier
+
+                final_value = int(outcome * total_multiplier)
+                self.balance.add(final_value)
+                # =================================
+
                 is_crit_now = False
                 if isinstance(coin, SilverCoin) and coin.is_crit:
                     is_crit_now = True
@@ -125,6 +148,11 @@ class GameController:
         if self.wisp:
             self.wisp.update(dt, width, height, self.coins, self.grabbed_coin)
 
+        # === ОБНОВЛЕНИЕ ЗОН ===
+        for zone in self.zones:
+            zone.update(dt, width, height)
+        # =======================
+
         for p in self.particles:
             decay_speed = p.get('decay_speed', 1.0)
             p['life'] -= dt * decay_speed
@@ -143,11 +171,20 @@ class GameController:
         self.ui.update_wisp_state(self.wisp is not None)
 
     def draw(self) -> None:
+        # 1. Рисуем зоны (под всем)
+        for zone in self.zones:
+            zone.draw()
+
+        # 2. Рисуем монетки
         for coin in self.coins:
             if not coin.is_moving: coin.draw()
         for coin in self.coins:
             if coin.is_moving: coin.draw()
+
+        # 3. Рисуем виспа
         self.wisp_list.draw()
+
+        # 4. Частицы
         for p in self.particles:
             alpha = int(255 * (p['life'] / 1.0))
             current_color = (p['color'][0], p['color'][1], p['color'][2], alpha)
@@ -236,6 +273,7 @@ class GameController:
 
     def try_buy_upgrade(self, upgrade_id: str) -> bool:
         if upgrade_id == "finish_game": return True
+
         cost = self.upgrade_prices.get(upgrade_id, 0)
         if self.balance.can_spend(cost):
             self.balance.spend(cost)
@@ -258,7 +296,6 @@ class GameController:
 
             elif upgrade_id == "wisp_spawn":
                 if not self.wisp:
-                    # Спавн с масштабом 0.33 (3 раза меньше)
                     self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=0.33)
                     self.wisp_list.append(self.wisp)
                     success = True
@@ -274,25 +311,83 @@ class GameController:
 
             elif upgrade_id == "wisp_size":
                 if self.wisp:
-                    # Увеличиваем масштаб на 0.5
                     self.wisp.upgrade_scale(0.05)
                     success = True
                 else:
                     success = False
 
-            new_price = math.ceil(cost * 2.718)
-            self.upgrade_prices[upgrade_id] = new_price
+            # === АПГРЕЙДЫ ЗОН (Исправленная логика через ссылки) ===
+            elif upgrade_id == "spawn_zone_2":
+                if self.zone_2 is None:
+                    z2 = MultiplyZone(self.width, self.height, 2.0, (100, 255, 100, 50))
+                    self.zones.append(z2)
+                    self.zone_2 = z2  # Сохраняем ссылку
+                    self.ui.set_button_disabled("spawn_zone_2", "Зона x2 (Куплено)")
+                    self.ui.update_zone_state(has_zone_2=True)
+                    success = True
+                else:
+                    success = False
 
-            if upgrade_id == "silver_crit_upgrade":
-                self.ui.update_button(upgrade_id, new_price, level=self.silver_crit_level)
-            elif upgrade_id == "grab_upgrade":
-                self.ui.update_grab_state(self.has_gold_coin, True)
-            elif upgrade_id == "gold_explosion_upgrade":
-                self.ui.set_button_disabled("gold_explosion_upgrade", "Золотой взрыв (Куплено)")
-            elif upgrade_id == "wisp_spawn":
-                self.ui.update_wisp_state(True)
+            elif upgrade_id == "spawn_zone_5":
+                if self.zone_5 is None:
+                    z5 = MultiplyZone(self.width, self.height, 5.0, (160, 32, 240, 50))
+                    self.zones.append(z5)
+                    self.zone_5 = z5  # Сохраняем ссылку
+                    self.ui.set_button_disabled("spawn_zone_5", "Зона x5 (Куплено)")
+                    self.ui.update_zone_state(has_zone_5=True)
+                    success = True
+                else:
+                    success = False
+
+            elif upgrade_id == "upgrade_zone_2_size":
+                if self.zone_2:
+                    self.zone_2.upgrade_size(1.05)
+                    success = True
+                else:
+                    success = False
+
+            elif upgrade_id == "upgrade_zone_5_size":
+                if self.zone_5:
+                    self.zone_5.upgrade_size(1.05)
+                    success = True
+                else:
+                    success = False
+
+            elif upgrade_id == "upgrade_zone_2_mult":
+                if self.zone_2:
+                    self.zone_2.upgrade_multiplier(0.05)
+                    success = True
+                else:
+                    success = False
+
+            elif upgrade_id == "upgrade_zone_5_mult":
+                if self.zone_5:
+                    self.zone_5.upgrade_multiplier(0.05)
+                    success = True
+                else:
+                    success = False
+
+            # === ОБРАБОТКА РЕЗУЛЬТАТА ===
+            if success:
+                # Покупка удалась - обновляем цены
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+
+                if upgrade_id == "silver_crit_upgrade":
+                    self.ui.update_button(upgrade_id, new_price, level=self.silver_crit_level)
+                elif upgrade_id == "grab_upgrade":
+                    self.ui.update_grab_state(self.has_gold_coin, True)
+                elif upgrade_id == "gold_explosion_upgrade":
+                    self.ui.set_button_disabled("gold_explosion_upgrade", "Золотой взрыв (Куплено)")
+                elif upgrade_id == "wisp_spawn":
+                    self.ui.update_wisp_state(True)
+                else:
+                    self.ui.update_button(upgrade_id, new_price)
+
+                return True
             else:
-                self.ui.update_button(upgrade_id, new_price)
+                # Покупка не удалась (например, зона уже есть) - возвращаем деньги
+                self.balance.add(cost)
+                return False
 
-            return True
         return False

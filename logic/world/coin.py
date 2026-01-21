@@ -93,6 +93,7 @@ class Coin:
             if self.explosion_chance > 0:
                 for other in other_coins:
                     if other is not self and not other.is_moving:
+                        # Золото не взрывает другое золото
                         if isinstance(other, GoldCoin):
                             continue
 
@@ -103,9 +104,11 @@ class Coin:
 
                         if dist_sq < (min_dist * min_dist) and dist_sq > 0:
                             dist = math.sqrt(dist_sq)
+                            # Вектор от монетки К золоту
                             nx = dx / dist
                             ny = dy / dist
-                            self.victims_to_flip.append({'coin': other, 'nx': nx, 'ny': ny})
+                            # Сохраняем с обратным знаком, чтобы улетело ОТ золотой
+                            self.victims_to_flip.append({'coin': other, 'nx': -nx, 'ny': -ny})
 
         # --- 2. НА ЗЕМЛЕ (Физика и Взрыв) ---
         else:
@@ -143,6 +146,7 @@ class Coin:
                         nx = dx / dist
                         ny = dy / dist
 
+                        # Анти-клип
                         max_instant_sep = 2.0
                         sep_mag = min(overlap * 0.5, max_instant_sep)
 
@@ -151,6 +155,7 @@ class Coin:
                         other.sprite.center_x -= sep_mag * nx
                         other.sprite.center_y -= sep_mag * ny
 
+                        # Отталкивание
                         stiffness = 4.8
                         push = overlap * stiffness
 
@@ -211,18 +216,13 @@ class Coin:
     def hit_by_coin(self, source_coin, nx, ny) -> None:
         """
         Вызывается, когда другая монетка (например, золото) 'ударила' эту.
-        nx, ny указывают ОТ Источника К Жертве.
-        Нам нужно, чтобы жертва улетела В ту же сторону (от источника).
         """
         self.is_moving = True
-        # УБРАНО отрицание, теперь монетка летит ВПРАВИЛЬНУЮ сторону (от удара)
         self.vx = nx * 600
         self.vy = ny * 600
 
-        if abs(self.vx) > abs(self.vy):
-            self.anim = self.sprites.get("right", []) if self.vx > 0 else self.sprites.get("left", [])
-        else:
-            self.anim = self.sprites.get("up", []) if self.vy > 0 else self.sprites.get("down", [])
+        # Выбор анимации (с учетом диагоналей)
+        self._select_flying_animation()
 
         self.anim_index = 0
         if self.anim:
@@ -239,22 +239,18 @@ class Coin:
         dead_zone = self.radius * 0.2
 
         if length < dead_zone:
+            # Случайное направление при клике в центр
             angle = random.uniform(0, 2 * math.pi)
             self.vx = math.cos(angle) * 600
             self.vy = math.sin(angle) * 600
         else:
-            # При клике мышкой мы хотим, чтобы монетка улетела ОТ клика.
-            # dx = mouse_x - coin_x.
-            # Вектор ОТ монетки К мышке это (dx, dy).
-            # Нам нужно УЛЕТЕТЬ ОТ МЫШКИ, значит вектор (-dx, -dy).
+            # Направление от клика (улетает ОТ курсора)
             if length > 0:
                 self.vx = (-dx / length) * 600
                 self.vy = (-dy / length) * 600
 
-        if abs(self.vx) > abs(self.vy):
-            self.anim = self.sprites.get("right", []) if self.vx > 0 else self.sprites.get("left", [])
-        else:
-            self.anim = self.sprites.get("up", []) if self.vy > 0 else self.sprites.get("down", [])
+        # Выбор анимации (с учетом диагоналей)
+        self._select_flying_animation()
 
         self.anim_index = 0
         if self.anim:
@@ -266,3 +262,28 @@ class Coin:
         val = self.last_outcome_value
         self.last_outcome_value = 0
         return val
+
+    def _select_flying_animation(self):
+        """
+        Вспомогательный метод: выбирает правильный список спрайтов
+        в зависимости от вектора скорости vx, vy
+        """
+        # Коэффициент 1.5 определяет "зону" диагонали.
+        # Если скорость по X > 1.5 * скорость по Y -> считаем прямым полетом по X.
+        # Если скорости примерно равны -> считаем диагональю.
+        if abs(self.vx) > 1.5 * abs(self.vy):
+            # Горизонтальный полет (Влево или Вправо)
+            self.anim = self.sprites.get("right", []) if self.vx > 0 else self.sprites.get("left", [])
+        elif abs(self.vy) > 1.5 * abs(self.vx):
+            # Вертикальный полет (Вверх или Вниз)
+            self.anim = self.sprites.get("up", []) if self.vy > 0 else self.sprites.get("down", [])
+        else:
+            # Диагональный полет
+            if self.vx > 0 and self.vy > 0:
+                self.anim = self.sprites.get("up_right", [])
+            elif self.vx > 0 and self.vy < 0:
+                self.anim = self.sprites.get("down_right", [])
+            elif self.vx < 0 and self.vy > 0:
+                self.anim = self.sprites.get("up_left", [])
+            else:  # vx < 0, vy < 0
+                self.anim = self.sprites.get("down_left", [])

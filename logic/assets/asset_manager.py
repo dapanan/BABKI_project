@@ -128,6 +128,12 @@ class AssetManager:
             "down": load_dir("down"),
             "left": load_dir("left"),
             "right": load_dir("right"),
+            # Добавляем диагональные анимации
+            "up_left": load_dir("up_left"),
+            "up_right": load_dir("up_right"),
+            "down_left": load_dir("down_left"),
+            "down_right": load_dir("down_right"),
+            # --------------------------------
             "heads": heads_tex,
             "tails": tails_tex,
         })
