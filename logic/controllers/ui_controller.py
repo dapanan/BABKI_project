@@ -104,6 +104,7 @@ class UIController:
         # === ВКЛАДКА 2: ОБЩЕЕ ===
         self.tab_content[2] = [
             _UiGroupStub("Система", [
+                _UiButtonStub("new_game", "Новая игра", 0),
                 _UiButtonStub("finish_game", "Закончить игру", 0),
             ]),
         ]

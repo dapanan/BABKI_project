@@ -1,6 +1,8 @@
 import arcade
 import random
 import math
+import json
+import os
 from logic.world.gold_coin import GoldCoin
 from logic.world.bronze_coin import BronzeCoin
 from logic.world.silver_coin import SilverCoin
@@ -55,8 +57,6 @@ class GameController:
         self.wisp_list = arcade.SpriteList()
 
         self.zones: list[MultiplyZone] = []
-
-        # Сохраняем прямые ссылки на зоны, чтобы не искать их по числам
         self.zone_2: MultiplyZone | None = None
         self.zone_5: MultiplyZone | None = None
 
@@ -67,7 +67,10 @@ class GameController:
         self.mouse_velocity_history = []
         self.max_history_frames = 8
 
-        self.spawn_coin("bronze")
+        # Пытаемся загрузить сохранение
+        if not self.load_game():
+            # Если сохранения нет или ошибка — спавним дефолтную монетку
+            self.spawn_coin("bronze")
 
     def spawn_coin(self, coin_type: str):
         w = self.width
@@ -169,6 +172,11 @@ class GameController:
         self.ui.update_grab_state(self.has_gold_coin, self.grab_purchased)
         self.ui.update_explosion_state(self.gold_explosion_unlocked)
         self.ui.update_wisp_state(self.wisp is not None)
+        # Обновляем флаги зон для UI
+        self.ui.update_zone_state(
+            has_zone_2=(self.zone_2 is not None),
+            has_zone_5=(self.zone_5 is not None)
+        )
 
     def draw(self) -> None:
         # 1. Рисуем зоны (под всем)
@@ -274,6 +282,11 @@ class GameController:
     def try_buy_upgrade(self, upgrade_id: str) -> bool:
         if upgrade_id == "finish_game": return True
 
+        # === НОВАЯ ИГРА ===
+        if upgrade_id == "new_game":
+            self.reset_game()
+            return True
+
         cost = self.upgrade_prices.get(upgrade_id, 0)
         if self.balance.can_spend(cost):
             self.balance.spend(cost)
@@ -319,9 +332,9 @@ class GameController:
             # === АПГРЕЙДЫ ЗОН (Исправленная логика через ссылки) ===
             elif upgrade_id == "spawn_zone_2":
                 if self.zone_2 is None:
-                    z2 = MultiplyZone(self.width, self.height, 2.0, (100, 255, 100, 50))
+                    z2 = MultiplyZone(self.width, self.height, 2.0, (100, 255, 100, 100))
                     self.zones.append(z2)
-                    self.zone_2 = z2  # Сохраняем ссылку
+                    self.zone_2 = z2
                     self.ui.set_button_disabled("spawn_zone_2", "Зона x2 (Куплено)")
                     self.ui.update_zone_state(has_zone_2=True)
                     success = True
@@ -330,9 +343,9 @@ class GameController:
 
             elif upgrade_id == "spawn_zone_5":
                 if self.zone_5 is None:
-                    z5 = MultiplyZone(self.width, self.height, 5.0, (160, 32, 240, 50))
+                    z5 = MultiplyZone(self.width, self.height, 5.0, (160, 32, 240, 100))
                     self.zones.append(z5)
-                    self.zone_5 = z5  # Сохраняем ссылку
+                    self.zone_5 = z5
                     self.ui.set_button_disabled("spawn_zone_5", "Зона x5 (Куплено)")
                     self.ui.update_zone_state(has_zone_5=True)
                     success = True
@@ -391,3 +404,233 @@ class GameController:
                 return False
 
         return False
+
+    # --- МЕТОДЫ СОХРАНЕНИЯ И ЗАГРУЗКИ ---
+
+    def get_save_path(self):
+        # Пишем в консоль полный путь, чтобы мы знали, куда смотреть
+        path = os.path.join(os.getcwd(), "save.json")
+        print(f"DEBUG: Attempting to save to path: {path}")
+        print(f"DEBUG: Current Working Directory: {os.getcwd()}")
+        return path
+
+    def save_game(self) -> None:
+        """Сохраняет состояние игры в файл"""
+        data = {
+            "balance": self.balance.get(),
+            "upgrade_prices": self.upgrade_prices,
+            "silver_crit_level": self.silver_crit_level,
+            "flags": {
+                "has_gold_coin": self.has_gold_coin,
+                "grab_purchased": self.grab_purchased,
+                "gold_explosion_unlocked": self.gold_explosion_unlocked
+            },
+            "wisp": None,
+            "zones": [],
+            "coins": []
+        }
+
+        # Сохранение виспа
+        if self.wisp:
+            data["wisp"] = {
+                "speed": self.wisp.speed,
+                "scale": self.wisp.scale,
+                "x": self.wisp.center_x,
+                "y": self.wisp.center_y,
+                "vx": self.wisp.vx,
+                "vy": self.wisp.vy
+            }
+
+        # Сохранение зон
+        for z in self.zones:
+            data["zones"].append({
+                "multiplier": z.multiplier,
+                "size": z.size,
+                "x": z.x,
+                "y": z.y,
+                "vx": z.vx,
+                "vy": z.vy
+            })
+
+        # Сохранение монеток
+        for coin in self.coins:
+            coin_type = "bronze"
+            if isinstance(coin, SilverCoin):
+                coin_type = "silver"
+            elif isinstance(coin, GoldCoin):
+                coin_type = "gold"
+
+            data["coins"].append({
+                "type": coin_type,
+                "x": coin.sprite.center_x,
+                "y": coin.sprite.center_y,
+                "vx": coin.vx,
+                "vy": coin.vy,
+                "scale": coin.scale,
+                "is_moving": coin.is_moving
+            })
+
+        try:
+            with open(self.get_save_path(), "w") as f:
+                json.dump(data, f)
+            print("DEBUG: Game Saved.")
+        except Exception as e:
+            print(f"DEBUG: Error saving game: {e}")
+
+    def load_game(self) -> bool:
+        """Загружает состояние игры. Возвращает True если успешно."""
+        path = self.get_save_path()
+        if not os.path.exists(path):
+            print("DEBUG: No save file found.")
+            return False
+
+        try:
+            with open(path, "r") as f:
+                data = json.load(f)
+
+            # Восстановление баланса
+            self.balance._value = data["balance"]
+
+            # Восстановление цен
+            self.upgrade_prices = data["upgrade_prices"]
+            self.silver_crit_level = data["silver_crit_level"]
+
+            flags = data["flags"]
+            self.has_gold_coin = flags["has_gold_coin"]
+            self.grab_purchased = flags["grab_purchased"]
+            self.gold_explosion_unlocked = flags["gold_explosion_unlocked"]
+
+            # Восстановление виспа
+            wisp_data = data.get("wisp")
+            if wisp_data:
+                self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=wisp_data["scale"])
+                self.wisp.speed = wisp_data["speed"]
+                self.wisp.center_x = wisp_data["x"]
+                self.wisp.center_y = wisp_data["y"]
+                self.wisp.vx = wisp_data["vx"]
+                self.wisp.vy = wisp_data["vy"]
+                self.wisp_list.append(self.wisp)
+
+            # Восстановление зон
+            self.zones.clear()
+            for z_data in data["zones"]:
+                z = MultiplyZone(self.width, self.height, z_data["multiplier"], (0, 0, 0, 0))
+                z.multiplier = z_data["multiplier"]
+                z.size = z_data["size"]
+                z.width = z.size
+                z.height = z.size
+                z.x = z_data["x"]
+                z.y = z_data["y"]
+                z.vx = z_data["vx"]
+                z.vy = z_data["vy"]
+
+                if 1.5 <= z.multiplier <= 2.5:
+                    self.zone_2 = z
+                    z.color = (100, 255, 100, 100)
+                elif 4.5 <= z.multiplier <= 5.5:
+                    self.zone_5 = z
+                    z.color = (160, 32, 240, 100)
+
+                self.zones.append(z)
+
+            # Восстановление монеток
+            self.coins.clear()
+            for c_data in data["coins"]:
+                c_type = c_data["type"]
+                if c_type == "bronze":
+                    c = BronzeCoin(c_data["x"], c_data["y"], self.assets.bronze_coin_sprites, scale=c_data["scale"])
+                elif c_type == "silver":
+                    crit_chance = 0.1 * self.silver_crit_level
+                    c = SilverCoin(c_data["x"], c_data["y"], self.assets.silver_coin_sprites, crit_chance,
+                                   scale=c_data["scale"])
+                elif c_type == "gold":
+                    c = GoldCoin(c_data["x"], c_data["y"], self.assets.gold_coin_sprites, scale=c_data["scale"])
+
+                c.vx = c_data["vx"]
+                c.vy = c_data["vy"]
+                c.is_moving = c_data["is_moving"]
+
+                if c.is_moving:
+                    c._select_flying_animation()
+                    c.anim_index = 0
+                else:
+                    c.land()
+
+                self.coins.append(c)
+
+            # Обновляем UI
+            self.ui.update_grab_state(self.has_gold_coin, self.grab_purchased)
+            self.ui.update_explosion_state(self.gold_explosion_unlocked)
+            self.ui.update_wisp_state(self.wisp is not None)
+            self.ui.update_zone_state(
+                has_zone_2=(self.zone_2 is not None),
+                has_zone_5=(self.zone_5 is not None)
+            )
+
+            print("DEBUG: Game Loaded Successfully.")
+            return True
+
+        except json.JSONDecodeError:
+            # Специальная ошибка, если файл пустой или битый
+            print("DEBUG: Save file is corrupted or empty. Starting new game.")
+            return False
+        except Exception as e:
+            print(f"DEBUG: Error loading game: {e}")
+            return False
+
+    def reset_game(self) -> bool:
+        """Сбрасывает игру в начальное состояние"""
+        # Удаляем файл сохранения
+        if os.path.exists(self.get_save_path()):
+            os.remove(self.get_save_path())
+
+        # Очищаем списки
+        self.coins.clear()
+        self.particles.clear()
+        self.zones.clear()
+
+        # Сбрасываем ссылки на зоны
+        self.zone_2 = None
+        self.zone_5 = None
+
+        # Сбрасываем виспа
+        self.wisp = None
+        self.wisp_list.clear()
+
+        # Сбрасываем флаги
+        self.balance._value = 0
+        self.silver_crit_level = 1
+        self.has_gold_coin = False
+        self.grab_purchased = False
+        self.gold_explosion_unlocked = False
+
+        # Восстанавливаем цены на начальные
+        self.upgrade_prices = {
+            "buy_bronze_coin": 50,
+            "buy_silver_coin": 200,
+            "buy_gold_coin": 1000,
+            "silver_crit_upgrade": 500,
+            "grab_upgrade": 500,
+            "gold_explosion_upgrade": 2000,
+            "wisp_spawn": 5000,
+            "wisp_speed": 1000,
+            "wisp_size": 1000,
+            "spawn_zone_2": 10000,
+            "spawn_zone_5": 50000,
+            "upgrade_zone_2_size": 2000,
+            "upgrade_zone_5_size": 5000,
+            "upgrade_zone_2_mult": 3000,
+            "upgrade_zone_5_mult": 7000
+        }
+
+        # Обновляем UI (разблокируем все кнопки)
+        self.ui.update_grab_state(False, False)
+        self.ui.update_explosion_state(False)
+        self.ui.update_wisp_state(False)
+        self.ui.update_zone_state(False, False)
+
+        # Спавним первую монетку
+        self.spawn_coin("bronze")
+
+        print("DEBUG: Game Reset.")
+        return True

@@ -78,7 +78,7 @@ class MultiplyZone:
 
         # Рисуем текст с множителем
         arcade.draw_text(f"x{self.multiplier:.2f}", self.x, self.y,
-                         (255, 255, 255, 255), 16, anchor_x="center", anchor_y="center", bold=True)
+                         (155, 155, 155, 255), 16, anchor_x="center", anchor_y="center", bold=True)
 
     def check_collision(self, coin) -> bool:
         """Проверяет, находится ли центр монетки внутри зоны"""
