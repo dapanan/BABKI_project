@@ -11,6 +11,7 @@ from logic.world.map_activities.multiply_zone import MultiplyZone
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.economy.balance import Balance
+from logic.world.map_activities.beetle import Beetle
 
 
 class GameController:
@@ -28,7 +29,23 @@ class GameController:
         self.height = world_height
         self.scale_factor = scale_factor
 
+        self.bronze_coin_level = 1
+        self.silver_coin_level = 0
+        self.gold_coin_level = 0
+
         self.silver_crit_level = 1
+        self.auto_flip_level = 0  # Уровень авто-переворота (0 = выкл)
+        self.auto_flip_timer = 0.0  # Таймер авто-переворота
+
+        self.bronze_value_level = 0
+        self.silver_value_level = 0
+        self.gold_value_level = 0
+        self.wisp_speed_level = 0
+        self.wisp_size_level = 0
+        self.zone_2_size_level = 0
+        self.zone_2_mult_level = 0
+        self.zone_5_size_level = 0
+        self.zone_5_mult_level = 0
 
         self.upgrade_prices = {
             "buy_bronze_coin": 50,
@@ -45,7 +62,12 @@ class GameController:
             "upgrade_zone_2_size": 2000,
             "upgrade_zone_5_size": 5000,
             "upgrade_zone_2_mult": 3000,
-            "upgrade_zone_5_mult": 7000
+            "upgrade_zone_5_mult": 7000,
+            # Новые апгрейды
+            "auto_flip_upgrade": 500,
+            "bronze_value_upgrade": 2000,
+            "silver_value_upgrade": 5000,
+            "gold_value_upgrade": 10000
         }
 
         self.has_gold_coin = False
@@ -67,9 +89,13 @@ class GameController:
         self.mouse_velocity_history = []
         self.max_history_frames = 8
 
-        # Пытаемся загрузить сохранение
+        # Инициализируем переменные жука
+        self.beetle = None
+        self.beetle_respawn_timer = 0.0
+        self.beetle_respawn_interval = 0.0
+        self.spawn_beetle_initial()
+
         if not self.load_game():
-            # Если сохранения нет или ошибка — спавним дефолтную монетку
             self.spawn_coin("bronze")
 
     def spawn_coin(self, coin_type: str):
@@ -107,6 +133,48 @@ class GameController:
     def update(self, dt: float) -> None:
         width = self.width
         height = self.height
+
+        # === ЛОГИКА АВТО-ПЕРЕВОРОТА ===
+        # Работает только если уровень >= 1
+        if self.auto_flip_level >= 1:
+            self.auto_flip_timer += dt
+
+            # Интервал = 5 - (ур. - 1) * 0.2
+            flip_interval = 5.0 - (self.auto_flip_level - 1) * 0.2
+            if flip_interval < 0.5: flip_interval = 0.5
+
+            if self.auto_flip_timer >= flip_interval:
+                self.auto_flip_timer = 0
+                standing_coins = [c for c in self.coins if not c.is_moving and not c.is_moving]
+                if standing_coins:
+                    coin_to_flip = random.choice(standing_coins)
+                    dx = random.randint(-50, 50)
+                    dy = random.randint(-50, 50)
+                    coin_to_flip.hit(dx, dy)
+
+                    c_type = self._get_coin_type_string(coin_to_flip)
+                    self.sound_manager.play_toss(c_type)
+        # =================================
+            # === ЛОГИКА ЖУКА (НОВАЯ ИСПРАВЛЕННАЯ) ===
+        if self.beetle:
+                # Если жук есть, обновляем его
+            is_alive = self.beetle.update(dt, width, height)
+
+                # Если update вернул False, значит жук умер
+            if is_alive is False:
+                self.beetle = None
+                # Запускаем таймер на 3-5 минут (180 - 300 секунд)
+                self.beetle_respawn_interval = random.uniform(180.0, 300.0)
+                self.beetle_respawn_timer = 0.0
+                print(f"DEBUG: Beetle died. Next in {self.beetle_respawn_interval:.1f}s")
+        else:
+            # Если жука нет, тикаем таймер
+            self.beetle_respawn_timer += dt
+
+            # Если время пришло -> спавним
+            if self.beetle_respawn_timer >= self.beetle_respawn_interval:
+                    self.spawn_beetle()
+            # ===========================================
 
         if self.grabbed_coin:
             self.grabbed_coin.sprite.center_x = self.mouse_x
@@ -183,13 +251,17 @@ class GameController:
         for zone in self.zones:
             zone.draw()
 
-        # 2. Рисуем монетки
+        # 2. Рисуем ЖУКА (СЛОЙ: Самый низкий после зон, но под монетами)
+        if self.beetle:
+            self.beetle.draw()
+
+        # 3. Рисуем монетки
         for coin in self.coins:
             if not coin.is_moving: coin.draw()
         for coin in self.coins:
             if coin.is_moving: coin.draw()
 
-        # 3. Рисуем виспа
+        # 4. Рисуем виспа
         self.wisp_list.draw()
 
         # 4. Частицы
@@ -201,6 +273,8 @@ class GameController:
     def on_mouse_press(self, x: int, y: int, button: int) -> None:
         if button == arcade.MOUSE_BUTTON_LEFT:
             if x < self.width:
+                # 1. Проверяем монетки
+                clicked_coin = False
                 for coin in self.coins:
                     if not coin.is_moving and coin is not self.grabbed_coin:
                         dx = x - coin.sprite.center_x
@@ -209,7 +283,18 @@ class GameController:
                             coin.hit(dx, dy)
                             c_type = self._get_coin_type_string(coin)
                             self.sound_manager.play_toss(c_type)
+                            clicked_coin = True
                             break
+
+                # 2. Если монетка не была нажата, проверяем ЖУКА
+                if not clicked_coin and self.beetle and self.beetle.can_be_clicked:
+                    dx = x - self.beetle.center_x
+                    dy = y - self.beetle.center_y
+                    # Используем половину ширины спрайта как радиус клика для простоты
+                    # или beetle.width / 2
+                    hit_radius = self.beetle.width / 2
+                    if dx * dx + dy * dy < (hit_radius * hit_radius):
+                        self.kill_beetle()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int) -> None:
         self.mouse_x = x
@@ -280,9 +365,11 @@ class GameController:
             self.particles.append(particle_data)
 
     def try_buy_upgrade(self, upgrade_id: str) -> bool:
-        if upgrade_id == "finish_game": return True
+        if upgrade_id == "finish_game":
+            self.save_game()
+            arcade.close_window()
+            return True
 
-        # === НОВАЯ ИГРА ===
         if upgrade_id == "new_game":
             self.reset_game()
             return True
@@ -292,52 +379,117 @@ class GameController:
             self.balance.spend(cost)
             success = True
 
+            # --- ПОКУПКА МОНЕТОК (Теперь многоразовые) ---
             if upgrade_id == "buy_bronze_coin":
                 self.spawn_coin("bronze")
+                self.bronze_coin_level += 1
+                new_price = math.ceil(cost * 1.5)  # Коэффициент роста цены для монеток поменьше (1.5x)
+                self.upgrade_prices[upgrade_id] = new_price
+                self.ui.update_button(upgrade_id, new_price, level=self.bronze_coin_level)
+
             elif upgrade_id == "buy_silver_coin":
                 self.spawn_coin("silver")
+                self.silver_coin_level += 1
+                new_price = math.ceil(cost * 1.5)
+                self.upgrade_prices[upgrade_id] = new_price
+                self.ui.update_button(upgrade_id, new_price, level=self.silver_coin_level)
+
             elif upgrade_id == "buy_gold_coin":
                 self.spawn_coin("gold")
+                self.gold_coin_level += 1
+                new_price = math.ceil(cost * 1.5)
+                self.upgrade_prices[upgrade_id] = new_price
+                self.ui.update_button(upgrade_id, new_price, level=self.gold_coin_level)
+
+            # --- ОДНОРАЗОВЫЕ АПГРЕЙДЫ ---
             elif upgrade_id == "silver_crit_upgrade":
                 self.silver_crit_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                self.ui.update_button(upgrade_id, new_price, level=self.silver_crit_level)
+
             elif upgrade_id == "grab_upgrade":
                 self.grab_purchased = True
+                self.ui.mark_purchased(upgrade_id)
+
             elif upgrade_id == "gold_explosion_upgrade":
                 self.gold_explosion_unlocked = True
                 for coin in self.coins:
                     if isinstance(coin, GoldCoin): coin.explosion_chance = 0.5
+                self.ui.mark_purchased(upgrade_id)
 
+            # --- ВИСП ---
             elif upgrade_id == "wisp_spawn":
                 if not self.wisp:
                     self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=0.33)
                     self.wisp_list.append(self.wisp)
-                    success = True
+                    self.ui.mark_purchased(upgrade_id)
                 else:
                     success = False
 
             elif upgrade_id == "wisp_speed":
                 if self.wisp:
                     self.wisp.upgrade_speed(50)
-                    success = True
+                    self.wisp_speed_level += 1
+                    new_price = math.ceil(cost * 2.718)
+                    self.upgrade_prices[upgrade_id] = new_price
+                    self.ui.update_button(upgrade_id, new_price, level=self.wisp_speed_level)
                 else:
                     success = False
 
             elif upgrade_id == "wisp_size":
                 if self.wisp:
                     self.wisp.upgrade_scale(0.05)
-                    success = True
+                    self.wisp_size_level += 1
+                    new_price = math.ceil(cost * 2.718)
+                    self.upgrade_prices[upgrade_id] = new_price
+                    self.ui.update_button(upgrade_id, new_price, level=self.wisp_size_level)
                 else:
                     success = False
 
-            # === АПГРЕЙДЫ ЗОН (Исправленная логика через ссылки) ===
+            # --- ОБЩИЕ АПГРЕЙДЫ ---
+            elif upgrade_id == "auto_flip_upgrade":
+                self.auto_flip_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                # Явно передаю имя, чтобы текст на кнопке обновился правильно
+                self.ui.update_button(upgrade_id, new_price, level=self.auto_flip_level, name="Авто-переворот")
+
+            elif upgrade_id == "bronze_value_upgrade":
+                self.bronze_value_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                for coin in self.coins:
+                    if isinstance(coin, BronzeCoin):
+                        coin.value *= 2
+                self.ui.update_button(upgrade_id, new_price, level=self.bronze_value_level)
+
+            elif upgrade_id == "silver_value_upgrade":
+                self.silver_value_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                for coin in self.coins:
+                    if isinstance(coin, SilverCoin):
+                        coin.value *= 2
+                self.ui.update_button(upgrade_id, new_price, level=self.silver_value_level)
+
+            elif upgrade_id == "gold_value_upgrade":
+                self.gold_value_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                for coin in self.coins:
+                    if isinstance(coin, GoldCoin):
+                        coin.value *= 2
+                self.ui.update_button(upgrade_id, new_price, level=self.gold_value_level)
+
+            # --- АПГРЕЙДЫ ЗОН ---
             elif upgrade_id == "spawn_zone_2":
                 if self.zone_2 is None:
                     z2 = MultiplyZone(self.width, self.height, 2.0, (100, 255, 100, 100))
                     self.zones.append(z2)
                     self.zone_2 = z2
-                    self.ui.set_button_disabled("spawn_zone_2", "Зона x2 (Куплено)")
+                    self.ui.mark_purchased(upgrade_id)
                     self.ui.update_zone_state(has_zone_2=True)
-                    success = True
                 else:
                     success = False
 
@@ -346,73 +498,61 @@ class GameController:
                     z5 = MultiplyZone(self.width, self.height, 5.0, (160, 32, 240, 100))
                     self.zones.append(z5)
                     self.zone_5 = z5
-                    self.ui.set_button_disabled("spawn_zone_5", "Зона x5 (Куплено)")
+                    self.ui.mark_purchased(upgrade_id)
                     self.ui.update_zone_state(has_zone_5=True)
-                    success = True
                 else:
                     success = False
 
             elif upgrade_id == "upgrade_zone_2_size":
                 if self.zone_2:
                     self.zone_2.upgrade_size(1.05)
-                    success = True
+                    self.zone_2_size_level += 1
+                    new_price = math.ceil(cost * 2.718)
+                    self.upgrade_prices[upgrade_id] = new_price
+                    self.ui.update_button(upgrade_id, new_price, level=self.zone_2_size_level)
                 else:
                     success = False
 
             elif upgrade_id == "upgrade_zone_5_size":
                 if self.zone_5:
                     self.zone_5.upgrade_size(1.05)
-                    success = True
+                    self.zone_5_size_level += 1
+                    new_price = math.ceil(cost * 2.718)
+                    self.upgrade_prices[upgrade_id] = new_price
+                    self.ui.update_button(upgrade_id, new_price, level=self.zone_5_size_level)
                 else:
                     success = False
 
             elif upgrade_id == "upgrade_zone_2_mult":
                 if self.zone_2:
                     self.zone_2.upgrade_multiplier(0.05)
-                    success = True
+                    self.zone_2_mult_level += 1
+                    new_price = math.ceil(cost * 2.718)
+                    self.upgrade_prices[upgrade_id] = new_price
+                    self.ui.update_button(upgrade_id, new_price, level=self.zone_2_mult_level)
                 else:
                     success = False
 
             elif upgrade_id == "upgrade_zone_5_mult":
                 if self.zone_5:
                     self.zone_5.upgrade_multiplier(0.05)
-                    success = True
+                    self.zone_5_mult_level += 1
+                    new_price = math.ceil(cost * 2.718)
+                    self.upgrade_prices[upgrade_id] = new_price
+                    self.ui.update_button(upgrade_id, new_price, level=self.zone_5_mult_level)
                 else:
                     success = False
 
-            # === ОБРАБОТКА РЕЗУЛЬТАТА ===
             if success:
-                # Покупка удалась - обновляем цены
-                new_price = math.ceil(cost * 2.718)
-                self.upgrade_prices[upgrade_id] = new_price
-
-                if upgrade_id == "silver_crit_upgrade":
-                    self.ui.update_button(upgrade_id, new_price, level=self.silver_crit_level)
-                elif upgrade_id == "grab_upgrade":
-                    self.ui.update_grab_state(self.has_gold_coin, True)
-                elif upgrade_id == "gold_explosion_upgrade":
-                    self.ui.set_button_disabled("gold_explosion_upgrade", "Золотой взрыв (Куплено)")
-                elif upgrade_id == "wisp_spawn":
-                    self.ui.update_wisp_state(True)
-                else:
-                    self.ui.update_button(upgrade_id, new_price)
-
                 return True
             else:
-                # Покупка не удалась (например, зона уже есть) - возвращаем деньги
                 self.balance.add(cost)
                 return False
 
         return False
 
-    # --- МЕТОДЫ СОХРАНЕНИЯ И ЗАГРУЗКИ ---
-
     def get_save_path(self):
-        # Пишем в консоль полный путь, чтобы мы знали, куда смотреть
-        path = os.path.join(os.getcwd(), "save.json")
-        print(f"DEBUG: Attempting to save to path: {path}")
-        print(f"DEBUG: Current Working Directory: {os.getcwd()}")
-        return path
+        return os.path.join(os.getcwd(), "save.json")
 
     def save_game(self) -> None:
         """Сохраняет состояние игры в файл"""
@@ -420,6 +560,7 @@ class GameController:
             "balance": self.balance.get(),
             "upgrade_prices": self.upgrade_prices,
             "silver_crit_level": self.silver_crit_level,
+            "auto_flip_level": self.auto_flip_level,
             "flags": {
                 "has_gold_coin": self.has_gold_coin,
                 "grab_purchased": self.grab_purchased,
@@ -427,10 +568,23 @@ class GameController:
             },
             "wisp": None,
             "zones": [],
-            "coins": []
+            "coins": [],
+            "levels": {
+                "bronze_coin": self.bronze_coin_level,
+                "silver_coin": self.silver_coin_level,
+                "gold_coin": self.gold_coin_level,
+                "bronze_value": self.bronze_value_level,
+                "silver_value": self.silver_value_level,
+                "gold_value": self.gold_value_level,
+                "wisp_speed": self.wisp_speed_level,
+                "wisp_size": self.wisp_size_level,
+                "zone_2_size": self.zone_2_size_level,
+                "zone_2_mult": self.zone_2_mult_level,
+                "zone_5_size": self.zone_5_size_level,
+                "zone_5_mult": self.zone_5_mult_level,
+            }
         }
 
-        # Сохранение виспа
         if self.wisp:
             data["wisp"] = {
                 "speed": self.wisp.speed,
@@ -441,9 +595,16 @@ class GameController:
                 "vy": self.wisp.vy
             }
 
-        # Сохранение зон
         for z in self.zones:
+            # Определяем тип зоны явно, чтобы не путать при загрузке
+            z_type = "unknown"
+            if z is self.zone_2:
+                z_type = "zone_2"
+            elif z is self.zone_5:
+                z_type = "zone_5"
+
             data["zones"].append({
+                "type": z_type,  # <-- ДОБАВЛЕНО
                 "multiplier": z.multiplier,
                 "size": z.size,
                 "x": z.x,
@@ -452,7 +613,6 @@ class GameController:
                 "vy": z.vy
             })
 
-        # Сохранение монеток
         for coin in self.coins:
             coin_type = "bronze"
             if isinstance(coin, SilverCoin):
@@ -472,13 +632,12 @@ class GameController:
 
         try:
             with open(self.get_save_path(), "w") as f:
-                json.dump(data, f)
+                json.dump(data, f, ensure_ascii=True)
             print("DEBUG: Game Saved.")
         except Exception as e:
             print(f"DEBUG: Error saving game: {e}")
 
     def load_game(self) -> bool:
-        """Загружает состояние игры. Возвращает True если успешно."""
         path = self.get_save_path()
         if not os.path.exists(path):
             print("DEBUG: No save file found.")
@@ -488,19 +647,35 @@ class GameController:
             with open(path, "r") as f:
                 data = json.load(f)
 
-            # Восстановление баланса
-            self.balance._value = data["balance"]
+            if data is None:
+                print("DEBUG: Save file is empty.")
+                return False
 
-            # Восстановление цен
+            self.balance._value = data["balance"]
             self.upgrade_prices = data["upgrade_prices"]
             self.silver_crit_level = data["silver_crit_level"]
+            self.auto_flip_level = data.get("auto_flip_level", 0)
 
             flags = data["flags"]
             self.has_gold_coin = flags["has_gold_coin"]
             self.grab_purchased = flags["grab_purchased"]
             self.gold_explosion_unlocked = flags["gold_explosion_unlocked"]
 
-            # Восстановление виспа
+            # Загрузка уровней
+            levels_data = data.get("levels", {})
+            self.bronze_coin_level = levels_data.get("bronze_coin", 1)
+            self.silver_coin_level = levels_data.get("silver_coin", 0)
+            self.gold_coin_level = levels_data.get("gold_coin", 0)
+            self.bronze_value_level = levels_data.get("bronze_value", 0)
+            self.silver_value_level = levels_data.get("silver_value", 0)
+            self.gold_value_level = levels_data.get("gold_value", 0)
+            self.wisp_speed_level = levels_data.get("wisp_speed", 0)
+            self.wisp_size_level = levels_data.get("wisp_size", 0)
+            self.zone_2_size_level = levels_data.get("zone_2_size", 0)
+            self.zone_2_mult_level = levels_data.get("zone_2_mult", 0)
+            self.zone_5_size_level = levels_data.get("zone_5_size", 0)
+            self.zone_5_mult_level = levels_data.get("zone_5_mult", 0)
+
             wisp_data = data.get("wisp")
             if wisp_data:
                 self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=wisp_data["scale"])
@@ -511,11 +686,25 @@ class GameController:
                 self.wisp.vy = wisp_data["vy"]
                 self.wisp_list.append(self.wisp)
 
-            # Восстановление зон
             self.zones.clear()
+            self.zone_2 = None
+            self.zone_5 = None
+
             for z_data in data["zones"]:
-                z = MultiplyZone(self.width, self.height, z_data["multiplier"], (0, 0, 0, 0))
-                z.multiplier = z_data["multiplier"]
+                z_type = z_data.get("type", "unknown")
+
+                # Восстанавливаем зону по типу, а не по множителю!
+                if z_type == "zone_2":
+                    z = MultiplyZone(self.width, self.height, z_data["multiplier"], (100, 255, 100, 100))
+                    self.zone_2 = z
+                elif z_type == "zone_5":
+                    z = MultiplyZone(self.width, self.height, z_data["multiplier"], (160, 32, 240, 100))
+                    self.zone_5 = z
+                else:
+                    # Fallback если тип неизвестен (для старых сейвов)
+                    z = MultiplyZone(self.width, self.height, z_data["multiplier"], (0, 0, 0, 0))
+
+                # Восстанавливаем параметры
                 z.size = z_data["size"]
                 z.width = z.size
                 z.height = z.size
@@ -524,16 +713,8 @@ class GameController:
                 z.vx = z_data["vx"]
                 z.vy = z_data["vy"]
 
-                if 1.5 <= z.multiplier <= 2.5:
-                    self.zone_2 = z
-                    z.color = (100, 255, 100, 100)
-                elif 4.5 <= z.multiplier <= 5.5:
-                    self.zone_5 = z
-                    z.color = (160, 32, 240, 100)
-
                 self.zones.append(z)
 
-            # Восстановление монеток
             self.coins.clear()
             for c_data in data["coins"]:
                 c_type = c_data["type"]
@@ -558,7 +739,43 @@ class GameController:
 
                 self.coins.append(c)
 
-            # Обновляем UI
+            # СИНХРОНИЗАЦИЯ UI
+            if self.grab_purchased: self.ui.mark_purchased("grab_upgrade")
+            if self.gold_explosion_unlocked: self.ui.mark_purchased("gold_explosion_upgrade")
+            if self.wisp: self.ui.mark_purchased("wisp_spawn")
+            if self.zone_2: self.ui.mark_purchased("spawn_zone_2")
+            if self.zone_5: self.ui.mark_purchased("spawn_zone_5")
+
+            self.ui.update_button("silver_crit_upgrade", self.upgrade_prices["silver_crit_upgrade"],
+                                  level=self.silver_crit_level)
+            self.ui.update_button("auto_flip_upgrade", self.upgrade_prices["auto_flip_upgrade"],
+                                  level=self.auto_flip_level)
+
+            self.ui.update_button("buy_bronze_coin", self.upgrade_prices["buy_bronze_coin"],
+                                  level=self.bronze_coin_level)
+            self.ui.update_button("buy_silver_coin", self.upgrade_prices["buy_silver_coin"],
+                                  level=self.silver_coin_level)
+            self.ui.update_button("buy_gold_coin", self.upgrade_prices["buy_gold_coin"], level=self.gold_coin_level)
+
+            self.ui.update_button("bronze_value_upgrade", self.upgrade_prices["bronze_value_upgrade"],
+                                  level=self.bronze_value_level)
+            self.ui.update_button("silver_value_upgrade", self.upgrade_prices["silver_value_upgrade"],
+                                  level=self.silver_value_level)
+            self.ui.update_button("gold_value_upgrade", self.upgrade_prices["gold_value_upgrade"],
+                                  level=self.gold_value_level)
+
+            self.ui.update_button("wisp_speed", self.upgrade_prices["wisp_speed"], level=self.wisp_speed_level)
+            self.ui.update_button("wisp_size", self.upgrade_prices["wisp_size"], level=self.wisp_size_level)
+
+            self.ui.update_button("upgrade_zone_2_size", self.upgrade_prices["upgrade_zone_2_size"],
+                                  level=self.zone_2_size_level)
+            self.ui.update_button("upgrade_zone_2_mult", self.upgrade_prices["upgrade_zone_2_mult"],
+                                  level=self.zone_2_mult_level)
+            self.ui.update_button("upgrade_zone_5_size", self.upgrade_prices["upgrade_zone_5_size"],
+                                  level=self.zone_5_size_level)
+            self.ui.update_button("upgrade_zone_5_mult", self.upgrade_prices["upgrade_zone_5_mult"],
+                                  level=self.zone_5_mult_level)
+
             self.ui.update_grab_state(self.has_gold_coin, self.grab_purchased)
             self.ui.update_explosion_state(self.gold_explosion_unlocked)
             self.ui.update_wisp_state(self.wisp is not None)
@@ -571,7 +788,6 @@ class GameController:
             return True
 
         except json.JSONDecodeError:
-            # Специальная ошибка, если файл пустой или битый
             print("DEBUG: Save file is corrupted or empty. Starting new game.")
             return False
         except Exception as e:
@@ -580,31 +796,41 @@ class GameController:
 
     def reset_game(self) -> bool:
         """Сбрасывает игру в начальное состояние"""
-        # Удаляем файл сохранения
         if os.path.exists(self.get_save_path()):
             os.remove(self.get_save_path())
 
-        # Очищаем списки
+        # 1. Очистка игровых объектов
         self.coins.clear()
         self.particles.clear()
         self.zones.clear()
-
-        # Сбрасываем ссылки на зоны
         self.zone_2 = None
         self.zone_5 = None
-
-        # Сбрасываем виспа
+        self.beetle = None
         self.wisp = None
         self.wisp_list.clear()
 
-        # Сбрасываем флаги
+        # 2. Сброс прогресса и цен
         self.balance._value = 0
         self.silver_crit_level = 1
+        self.auto_flip_level = 0
+        self.bronze_coin_level = 1  # Стартовая монетка
+        self.silver_coin_level = 0
+        self.gold_coin_level = 0
+
+        self.bronze_value_level = 0
+        self.silver_value_level = 0
+        self.gold_value_level = 0
+        self.wisp_speed_level = 0
+        self.wisp_size_level = 0
+        self.zone_2_size_level = 0
+        self.zone_2_mult_level = 0
+        self.zone_5_size_level = 0
+        self.zone_5_mult_level = 0
+
         self.has_gold_coin = False
         self.grab_purchased = False
         self.gold_explosion_unlocked = False
 
-        # Восстанавливаем цены на начальные
         self.upgrade_prices = {
             "buy_bronze_coin": 50,
             "buy_silver_coin": 200,
@@ -620,17 +846,91 @@ class GameController:
             "upgrade_zone_2_size": 2000,
             "upgrade_zone_5_size": 5000,
             "upgrade_zone_2_mult": 3000,
-            "upgrade_zone_5_mult": 7000
+            "upgrade_zone_5_mult": 7000,
+            "auto_flip_upgrade": 500,
+            "bronze_value_upgrade": 2000,
+            "silver_value_upgrade": 5000,
+            "gold_value_upgrade": 10000
         }
 
-        # Обновляем UI (разблокируем все кнопки)
+        # 3. СБРОС UI (Сбрасываем состояние кнопок)
+        for tab_groups in self.ui.tab_content.values():
+            for grp in tab_groups:
+                for b in grp.buttons:
+                    # Снимаем метку "Куплено"
+                    b.is_purchased = False
+                    # Разблокируем кнопку
+                    self.ui._enabled[b.upgrade_id] = True
+
+        # 4. Обновляем текст и уровни на кнопках через update_button
+        # Это нужно, чтобы вернулись правильные цены и "(ур.X)"
+        self.ui.update_button("buy_bronze_coin", 50, level=1)
+        self.ui.update_button("buy_silver_coin", 200, level=0)
+        self.ui.update_button("buy_gold_coin", 1000, level=0)
+
+        self.ui.update_button("silver_crit_upgrade", 500, level=1)
+        self.ui.update_button("wisp_spawn", 5000, level=0)  # <--- ДОБАВЬ ЭТО
+        self.ui.update_button("spawn_zone_2", 10000, level=0)  # <--- ДОБАВЬ ЭТО
+        self.ui.update_button("spawn_zone_5", 50000, level=0)
+        self.ui.update_button("grab_upgrade", 500, level=0)  # Уровень тут не важен, но сбросит текст
+        self.ui.update_button("gold_explosion_upgrade", 2000, level=0)
+
+        self.ui.update_button("auto_flip_upgrade", 500, level=0)
+
+        self.ui.update_button("bronze_value_upgrade", 2000, level=0)
+        self.ui.update_button("silver_value_upgrade", 5000, level=0)
+        self.ui.update_button("gold_value_upgrade", 10000, level=0)
+
+        self.ui.update_button("wisp_speed", 1000, level=0)
+        self.ui.update_button("wisp_size", 1000, level=0)
+
+        self.ui.update_button("upgrade_zone_2_size", 2000, level=0)
+        self.ui.update_button("upgrade_zone_2_mult", 3000, level=0)
+        self.ui.update_button("upgrade_zone_5_size", 5000, level=0)
+        self.ui.update_button("upgrade_zone_5_mult", 7000, level=0)
+
+        # Сбрасываем флаги UI, которые зависят от существования объектов
         self.ui.update_grab_state(False, False)
         self.ui.update_explosion_state(False)
         self.ui.update_wisp_state(False)
         self.ui.update_zone_state(False, False)
 
-        # Спавним первую монетку
+        # Спавним стартовую монету
         self.spawn_coin("bronze")
 
         print("DEBUG: Game Reset.")
         return True
+
+    def spawn_beetle(self) -> None:
+        margin = 50
+        x = random.randint(margin, int(self.width - margin))
+        y = random.randint(margin, int(self.height - margin))
+
+        self.beetle = Beetle(x, y, self.assets.beetle_sprites)
+        print("DEBUG: Beetle spawned!")
+
+    def kill_beetle(self) -> None:
+        """Обрабатывает смерть жука: звук, баланс, анимацию"""
+        if not self.beetle: return
+
+        # 1. Звук
+        if self.sound_manager.beetle_dead_sound:
+            arcade.play_sound(self.sound_manager.beetle_dead_sound)
+
+        # 2. Умножение баланса на 1.2
+        current_balance = self.balance.get()
+        new_balance = int(current_balance * 1.2)
+
+        # Обновляем значение напрямую (так как метод add просто прибавляет)
+        self.balance._value = new_balance
+        print(f"DEBUG: Beetle killed! Balance {current_balance} -> {new_balance}")
+
+        # 3. Запускаем анимацию смерти жука
+        self.beetle.start_death()
+
+    def spawn_beetle_initial(self):
+        """Устанавливает время для самого первого появления жука"""
+        # Чтобы жук не появлялся мгновенно при старте, даем ему рандом от 10 до 60 сек
+        # Или ставь random.uniform(0, 300) как раньше. Но для старта лучше маленькое.
+        self.beetle_respawn_interval = random.uniform(10.0, 60.0)
+        self.beetle_respawn_timer = 0.0

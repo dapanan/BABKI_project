@@ -14,9 +14,15 @@ class _TabStub:
 @dataclass
 class _UiButtonStub:
     upgrade_id: str
-    title: str
+    title: str  # Отображаемое название
+    base_name: str  # Чистое название для сброса
     base_cost: int
     text_obj: arcade.Text = None
+    is_one_time: bool = True
+    is_purchased: bool = False
+    purchased_text: str = "уже куплен"
+    level: int = 0
+    max_level: int = -1
 
 
 @dataclass
@@ -61,51 +67,69 @@ class UIController:
         # === ВКЛАДКА 0: МОНЕТКИ ===
         self.tab_content[0] = [
             _UiGroupStub("Бронзовая монетка", [
-                _UiButtonStub("buy_bronze_coin", "Купить бронзовую", 50),
+                # Сделал многоразовыми, добавил level=1
+                _UiButtonStub("buy_bronze_coin", "Купить бронзовую", "Купить бронзовую", 50, is_one_time=False,
+                              level=1),
+                _UiButtonStub("bronze_value_upgrade", "Цена бронзы x2", "Цена бронзы x2", 2000, is_one_time=False,
+                              level=0),
             ]),
             _UiGroupStub("Серебряная монетка", [
-                _UiButtonStub("buy_silver_coin", "Купить серебряную", 200),
-                _UiButtonStub("silver_crit_upgrade", "Крит серебра", 500),
+                _UiButtonStub("buy_silver_coin", "Купить серебряную", "Купить серебряную", 200, is_one_time=False,
+                              level=0),
+                _UiButtonStub("silver_crit_upgrade", "Крит серебра", "Крит серебра", 500, is_one_time=False, level=1),
+                _UiButtonStub("silver_value_upgrade", "Цена серебра x2", "Цена серебра x2", 5000, is_one_time=False,
+                              level=0),
             ]),
             _UiGroupStub("Золотая монетка", [
-                _UiButtonStub("buy_gold_coin", "Купить золотую", 1000),
-                _UiButtonStub("gold_explosion_upgrade", "Взрыв золота", 2000),
-                _UiButtonStub("grab_upgrade", "ПКМ Золото", 500),
+                _UiButtonStub("buy_gold_coin", "Купить золотую", "Купить золотую", 1000, is_one_time=False, level=0),
+                _UiButtonStub("gold_explosion_upgrade", "Взрыв золота", "Взрыв золота", 2000, is_one_time=True),
+                _UiButtonStub("grab_upgrade", "ПКМ Золото", "ПКМ Золото", 500, is_one_time=True),
+                _UiButtonStub("gold_value_upgrade", "Цена золота x2", "Цена золота x2", 10000, is_one_time=False,
+                              level=0),
+            ]),
+
+            _UiGroupStub("Общее для монеток", [
+                _UiButtonStub("auto_flip_upgrade", "Авто-переворот", "Авто-переворот", 500, is_one_time=False, level=0),
             ]),
         ]
 
         # === ВКЛАДКА 1: КАРТА ===
         self.tab_content[1] = [
             _UiGroupStub("Летающий висп", [
-                _UiButtonStub("wisp_spawn", "Призыв виспа", 5000),
-                _UiButtonStub("wisp_speed", "Скорость виспа", 1000),
-                _UiButtonStub("wisp_size", "Размер виспа", 1000),
+                _UiButtonStub("wisp_spawn", "Призыв виспа", "Призыв виспа", 5000, is_one_time=True),
+                _UiButtonStub("wisp_speed", "Скорость виспа", "Скорость виспа", 1000, is_one_time=False, level=0),
+                _UiButtonStub("wisp_size", "Размер виспа", "Размер виспа", 1000, is_one_time=False, level=0),
             ]),
 
             # Группа ЗОНЫ x2
             _UiGroupStub("Зона x2", [
-                _UiButtonStub("spawn_zone_2", "Зона x2", 10000),
-                _UiButtonStub("upgrade_zone_2_size", "Размер зоны x2", 2000),
-                _UiButtonStub("upgrade_zone_2_mult", "Множитель зоны x2", 3000),
+                _UiButtonStub("spawn_zone_2", "Зона x2", "Зона x2", 10000, is_one_time=True),
+                _UiButtonStub("upgrade_zone_2_size", "Размер зоны x2", "Размер зоны x2", 2000, is_one_time=False,
+                              level=0),
+                _UiButtonStub("upgrade_zone_2_mult", "Множитель зоны x2", "Множитель зоны x2", 3000, is_one_time=False,
+                              level=0),
             ]),
 
             # Группа ЗОНЫ x5
             _UiGroupStub("Зона x5", [
-                _UiButtonStub("spawn_zone_5", "Зона x5", 50000),
-                _UiButtonStub("upgrade_zone_5_size", "Размер зоны x5", 5000),
-                _UiButtonStub("upgrade_zone_5_mult", "Множитель зоны x5", 7000),
+                _UiButtonStub("spawn_zone_5", "Зона x5", "Зона x5", 50000, is_one_time=True),
+                _UiButtonStub("upgrade_zone_5_size", "Размер зоны x5", "Размер зоны x5", 5000, is_one_time=False,
+                              level=0),
+                _UiButtonStub("upgrade_zone_5_mult", "Множитель зоны x5", "Множитель зоны x5", 7000, is_one_time=False,
+                              level=0),
             ]),
 
             _UiGroupStub("Маятник", [
-                _UiButtonStub("pendulum_unlock", "Разблокировать маятник", 2000),
+                _UiButtonStub("pendulum_unlock", "Разблокировать маятник", "Разблокировать маятник", 2000,
+                              is_one_time=True),
             ]),
         ]
 
         # === ВКЛАДКА 2: ОБЩЕЕ ===
         self.tab_content[2] = [
             _UiGroupStub("Система", [
-                _UiButtonStub("new_game", "Новая игра", 0),
-                _UiButtonStub("finish_game", "Закончить игру", 0),
+                _UiButtonStub("new_game", "Новая игра", "Новая игра", 0, is_one_time=True),
+                _UiButtonStub("finish_game", "Закончить игру", "Закончить игру", 0, is_one_time=True),
             ]),
         ]
 
@@ -169,24 +193,33 @@ class UIController:
         return f"{name} ({cost_str})"
 
     def update_button(self, upgrade_id: str, cost: int, level: int = 0, name: str = None) -> None:
-        base_names = {
-            "buy_bronze_coin": "Купить бронзовую",
-            "buy_silver_coin": "Купить серебряную",
-            "buy_gold_coin": "Купить золотую",
-            "silver_crit_upgrade": "Крит серебра",
-        }
-        if name is None:
-            name = base_names.get(upgrade_id, upgrade_id)
-
-        new_title = self._format_button_text(name, cost, level)
-
-        # Ищем кнопку внутри вкладок и групп
         for tab_groups in self.tab_content.values():
             for grp in tab_groups:
                 for b in grp.buttons:
                     if b.upgrade_id == upgrade_id:
-                        b.title = new_title
+                        # 1. Обновляем цену
                         b.base_cost = cost
+                        b.level = level
+
+                        # 2. Если передали новое имя, обновляем базу (используется для автопереворота)
+                        if name is not None:
+                            b.base_name = name
+                            b.title = name
+
+                        # 3. Формируем отображаемый текст
+                        price_str = self._format_number(cost)
+
+                        if b.is_one_time:
+                            # Одноразовые обычно обновляются только через mark_purchased
+                            # Но если сюда попали (например, крит серебра), просто обновим цену внутри текста
+                            if not b.is_purchased:
+                                b.title = f"{b.base_name} ({price_str})"
+                        else:
+                            # Многоразовые
+                            if level > 0:
+                                b.title = f"{b.base_name} ({level}) ({price_str})"
+                            else:
+                                b.title = f"{b.base_name} ({price_str})"
                         return
 
     def update_grab_state(self, has_gold: bool, purchased: bool) -> None:
@@ -212,7 +245,6 @@ class UIController:
                 for b in grp.buttons:
                     if b.upgrade_id == upgrade_id:
                         b.title = title
-                        # ИСПРАВЛЕНО: Правильно отключаем кнопку в словаре
                         self._enabled[upgrade_id] = False
                         return
 
@@ -221,8 +253,20 @@ class UIController:
         for tab_groups in self.tab_content.values():
             for grp in tab_groups:
                 for b in grp.buttons:
-                    if b.upgrade_id == "finish_game":
+                    if b.upgrade_id == "finish_game" or b.upgrade_id == "new_game":
                         self._enabled[b.upgrade_id] = True
+
+                    # === ПРОВЕРКА МАКСИМАЛЬНОГО УРОВНЯ ===
+                    if b.max_level > 0 and b.level >= b.max_level:
+                        b.title = f"{b.base_name} (уровень макс.)"
+                        self._enabled[b.upgrade_id] = False
+                        continue
+                        # ====================================
+
+                    # Если одноразовая уже куплена
+                    if b.is_purchased:
+                        self._enabled[b.upgrade_id] = False
+                        continue
 
                     elif b.upgrade_id == "grab_upgrade":
                         if self._has_gold and not self._grab_purchased:
@@ -290,6 +334,13 @@ class UIController:
                         else:
                             self._enabled[b.upgrade_id] = False
 
+                    # === ЛОГИКА НОВЫХ ОБЩИХ АПГРЕЙДОВ ===
+                    elif b.upgrade_id == "auto_flip_upgrade":
+                        self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+
+                    elif "value_upgrade" in b.upgrade_id:
+                        self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+
                     else:
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
 
@@ -336,22 +387,17 @@ class UIController:
         for i, tab in enumerate(self.tabs):
             x = self.panel_x + i * tab_w
 
-            # --- ИЗМЕНЕНИЕ ЦВЕТОВ ВКЛАДОК ---
             if i == self.active_tab_index:
-                bg_color = arcade.color.WHITE  # Активная вкладка: Белый фон
-                text_color = arcade.color.BLACK  # Активная вкладка: Черный текст
+                bg_color = arcade.color.WHITE
+                text_color = arcade.color.BLACK
             else:
-                bg_color = arcade.color.GRAY  # Неактивная вкладка: Серый фон
-                text_color = (50, 50, 50, 255)  # Неактивная вкладка: Темно-серый текст
-            # ----------------------------------
+                bg_color = arcade.color.GRAY
+                text_color = (50, 50, 50, 255)
 
-            # Рисуем фон вкладки
             arcade.draw_lrbt_rectangle_filled(x, x + tab_w, tab_y, tab_y + self.tab_bar_height, bg_color)
-            # Рисуем рамку
             arcade.draw_lrbt_rectangle_outline(x, x + tab_w, tab_y, tab_y + self.tab_bar_height, arcade.color.DARK_GRAY,
                                                2)
 
-            # Текст вкладки
             text = arcade.Text(tab.title, x + tab_w / 2, tab_y + self.tab_bar_height / 2,
                                text_color, 16, anchor_x="center", anchor_y="center", font_name=self.current_font)
             text.draw()
@@ -387,7 +433,6 @@ class UIController:
                 is_pressed = (self._pressed_id == b.upgrade_id)
                 y_draw = b_y - (6 if is_pressed else 0)
 
-                # Проверка прозрачности (как было)
                 alpha = 255
                 if b_y < fade_margin:
                     factor = b_y / fade_margin
@@ -446,7 +491,6 @@ class UIController:
                 b.text_obj.color = text_color
                 b.text_obj.draw()
 
-                # Сдвигаем позицию вниз
                 current_base_y -= (self.btn_height + self.btn_gap)
 
     def _get_current_buttons(self):
@@ -548,3 +592,15 @@ class UIController:
             self.scroll_y = 0
         elif self.scroll_y > max_scroll_limit:
             self.scroll_y = max_scroll_limit
+
+    def mark_purchased(self, upgrade_id: str) -> None:
+        """Помечает одноразовый апгрейд как купленный"""
+        for tab_groups in self.tab_content.values():
+            for grp in tab_groups:
+                for b in grp.buttons:
+                    if b.upgrade_id == upgrade_id:
+                        b.is_purchased = True
+                        # Используем base_name, чтобы убрать цену (если она была в title)
+                        b.title = f"{b.base_name} ({b.purchased_text})"
+                        self._enabled[upgrade_id] = False
+                        return

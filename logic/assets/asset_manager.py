@@ -21,7 +21,8 @@ class AssetManager:
         self.bronze_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
         self.silver_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
         self.gold_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
-        self.wisp_sprites: list[arcade.Texture] = []  # <--- Спрайты виспа
+        self.wisp_sprites: list[arcade.Texture] = []
+        self.beetle_sprites: list[arcade.Texture] = []
 
     def load_all(self) -> None:
         print("Loading assets...")
@@ -30,7 +31,7 @@ class AssetManager:
         self._load_coin_type("gold_coin", self.gold_coin_sprites, arcade.color.GOLD)
 
         self._load_wisp_sprites()  # <--- Загрузка виспа
-
+        self._load_beetle_sprites()
         self._loaded = True
 
     def _load_wisp_sprites(self) -> None:
@@ -53,6 +54,47 @@ class AssetManager:
             print(f"WARNING: Wisp folder not found: {wisp_dir}. Creating placeholder.")
             placeholder = self._create_pil_texture(arcade.color.PURPLE)
             self.wisp_sprites = [placeholder]
+
+    def _load_beetle_sprites(self) -> None:
+        """Загружает спрайты жука из папки view/sprites/beetle"""
+        beetle_dir = os.path.join(self.base_dir, "sprites", "beetle")
+
+        # Структура: {"up": [tex1, ...], "down": [...], ...}
+        sprites_dict = {"up": [], "down": [], "left": [], "right": []}
+
+        if not os.path.exists(beetle_dir):
+            print(f"  WARNING: Beetle folder not found: {beetle_dir}")
+            self.beetle_sprites = sprites_dict
+            return
+
+        # Пробуем разные варианты имен папок (с префиксом beetle_ и без)
+        # В твоем случае: beetle_up, beetle_down...
+        folder_map = {
+            "up": ["up", "beetle_up"],
+            "down": ["down", "beetle_down"],
+            "left": ["left", "beetle_left"],
+            "right": ["right", "beetle_right"]
+        }
+
+        for direction, variants in folder_map.items():
+            loaded = False
+            for folder_name in variants:
+                dir_path = os.path.join(beetle_dir, folder_name)
+                if os.path.exists(dir_path):
+                    files = sorted(os.listdir(dir_path))
+                    for f in files:
+                        if f.endswith(".png"):
+                            sprites_dict[direction].append(
+                                arcade.load_texture(os.path.join(dir_path, f))
+                            )
+                    if sprites_dict[direction]:
+                        loaded = True
+                        break  # Если нашли в одной папке, вторую не ищем
+
+            if loaded:
+                print(f"  -> Loaded {len(sprites_dict[direction])} frames for direction {direction}")
+
+        self.beetle_sprites = sprites_dict
 
     def load_ui_assets(self) -> None:
         """Загружает кнопки и шрифт для интерфейса"""

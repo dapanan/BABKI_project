@@ -24,6 +24,7 @@ class SoundManager:
         self._last_silver_land = None
         self._last_gold_toss = None
         self._last_gold_land = None
+        self.beetle_dead_sound = None
 
     def load_all(self) -> None:
         base_sound_dir = "view/sounds"
@@ -72,6 +73,17 @@ class SoundManager:
         print(f"Silver Land: {len(self.silver_landing_sounds)}")
         print(f"Gold Toss: {len(self.gold_toss_sounds)}")
         print(f"Gold Land: {len(self.gold_landing_sounds)}")
+        print("--- Loading Beetle Sound ---")
+
+        # Формируем правильный путь: view/sounds/beetle/beetle_dead.mp3
+        beetle_sound_dir = os.path.join(base_sound_dir, "beetle")
+        beetle_sound_path = os.path.join(beetle_sound_dir, "beetle_dead.mp3")
+
+        if os.path.exists(beetle_sound_path):
+            self.beetle_dead_sound = arcade.load_sound(beetle_sound_path)
+            print("  -> Loaded Beetle sound")
+        else:
+            print(f"  -> WARNING: Beetle sound not found at {beetle_sound_path}")
 
     def _load_sounds_from_dir(self, directory_paths: list[str], target_list: list, label: str) -> None:
         """Ищет звуки в первой доступной папке из списка directory_paths"""
