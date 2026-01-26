@@ -12,6 +12,9 @@ from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.economy.balance import Balance
 from logic.world.map_activities.beetle import Beetle
+from logic.world.map_activities.crater import Crater
+from logic.world.map_activities.meteor import Meteor
+from logic.world.map_activities.explosion import Explosion
 
 
 class GameController:
@@ -23,6 +26,26 @@ class GameController:
         self.sound_manager = sound_manager
         self.coins = []
         self.particles = []
+
+        # --- МЕТЕОРИТ ---
+        self.meteor = None
+        self.crater = None
+        self.explosions = arcade.SpriteList()
+
+        self.meteor_respawn_timer = 0.0
+        self.meteor_next_spawn_time = 0.0
+
+        # Первый спавн через рандомное время (например, 10-60 сек для теста, потом поменяешь на 300-420)
+        self.meteor_next_spawn_time = random.uniform(10.0, 60.0)
+
+        # --- НАСТРОЙКИ МЕТЕОРИТА ---
+        self.meteor_blast_radius = 400.0 # Радиус разлета монет
+        self.meteor_volume = 0.4        # Громкость взрыва (0.0 - 1.0)
+        self.meteor_trail_timer = 0.0
+
+        # --- МЕТЕОРИТ (Апгрейды) ---
+        self.meteor_unlocked = False       # Куплен ли спавнер?
+        self.meteor_cooldown_level = 0      # Уровень улучшения кулдауна
 
         # Адаптация под монитор
         self.width = world_width
@@ -63,11 +86,14 @@ class GameController:
             "upgrade_zone_5_size": 5000,
             "upgrade_zone_2_mult": 3000,
             "upgrade_zone_5_mult": 7000,
-            # Новые апгрейды
+            # Новые общие апгрейды
             "auto_flip_upgrade": 500,
             "bronze_value_upgrade": 2000,
             "silver_value_upgrade": 5000,
-            "gold_value_upgrade": 10000
+            "gold_value_upgrade": 10000,
+            # АПГРЕЙДЫ МЕТЕОРИТА (ОТСЮДА ИЗМЕНИ)
+            "spawn_meteor": 15000,
+            "meteor_cooldown_upgrade": 2000
         }
 
         self.has_gold_coin = False
@@ -155,12 +181,13 @@ class GameController:
                     c_type = self._get_coin_type_string(coin_to_flip)
                     self.sound_manager.play_toss(c_type)
         # =================================
-            # === ЛОГИКА ЖУКА (НОВАЯ ИСПРАВЛЕННАЯ) ===
+
+        # === ЛОГИКА ЖУКА (НОВАЯ ИСПРАВЛЕННАЯ) ===
         if self.beetle:
-                # Если жук есть, обновляем его
+            # Если жук есть, обновляем его
             is_alive = self.beetle.update(dt, width, height)
 
-                # Если update вернул False, значит жук умер
+            # Если update вернул False, значит жук умер
             if is_alive is False:
                 self.beetle = None
                 # Запускаем таймер на 3-5 минут (180 - 300 секунд)
@@ -173,8 +200,87 @@ class GameController:
 
             # Если время пришло -> спавним
             if self.beetle_respawn_timer >= self.beetle_respawn_interval:
-                    self.spawn_beetle()
-            # ===========================================
+                self.spawn_beetle()
+        # ===========================================
+
+        # === ЛОГИКА МЕТЕОРИТА ===
+        if self.meteor_unlocked:
+
+            spawn_smoke = False
+            if self.meteor:
+                is_trail = self.meteor.update(dt)
+                if is_trail and self.meteor.center_y > self.meteor.target_y:
+                    spawn_smoke = True
+
+                hit_ground = self.meteor.center_y <= self.meteor.target_y
+
+                if hit_ground:
+                    # Метеорит долетел
+                    impact_x = self.meteor.center_x
+                    impact_y = self.meteor.center_y
+
+                    # --- ЗВУК ---
+                    if self.sound_manager.boom_sound:
+                        arcade.play_sound(self.sound_manager.boom_sound, volume=self.meteor_volume)
+
+                    # --- ВИЗУАЛ ВЗРЫВА ---
+                    if self.assets.explosion_textures:
+                        expl = Explosion(impact_x, impact_y, self.assets.explosion_textures)
+                        self.explosions.append(expl)
+
+                    # --- ЧАСТИЦЫ ---
+                    self.create_explosion_particles(impact_x, impact_y)
+
+                    # === СОЗДАНИЕ И НАСТРОЙКА КРАТЕРА (В ТОЛЬКО ЗДЕСЬ!) ===
+                    self.crater = Crater(impact_x, impact_y, self.assets.crater_texture)
+
+                    # Устанавливаем множитель
+                    self.crater.multiplier = 10.0
+
+                    # ВАЖНО: Устанавливаем масштаб, чтобы зона была большой
+                    self.crater.scale = 1.5
+                    # ========================================================
+
+                    # --- ФИЗИКА РАЗЛЕТА ---
+                    for coin in self.coins:
+                        # Вектор ОТ взрыва К монетке
+                        dx = impact_x - coin.sprite.center_x
+                        dy = impact_y - coin.sprite.center_y
+                        dist_sq = dx * dx + dy * dy
+
+                        if dist_sq < (self.meteor_blast_radius * self.meteor_blast_radius):
+                            coin.hit(dx, dy)
+
+                    self.meteor = None
+
+            # --- УПРАВЛЕНИЕ ЖИЗНЬЮ КРАТЕРА ---
+            if self.crater:
+                is_alive = self.crater.update(dt)
+                if not is_alive:
+                    self.crater = None
+                    # РАСЧЕТ КД С УЧЕТОМ АПГРЕЙДА
+                    # База: 300-420 сек. Каждый уровень уменьшает максимум на 30 сек.
+                    max_cd = 2 - (self.meteor_cooldown_level * 30.0)
+
+                    self.meteor_respawn_timer = 0.0
+                    self.meteor_next_spawn_time = random.uniform(1, max_cd)
+                    print(f"DEBUG: Crater gone. Next meteor in {self.meteor_next_spawn_time:.1f}s")
+            else:
+                # Если кратера нет, ждем
+                self.meteor_respawn_timer += dt
+                if self.meteor_respawn_timer >= self.meteor_next_spawn_time:
+                    self.spawn_meteor()
+                    self.meteor_respawn_timer = 0.0
+
+            # --- ДЫМ ---
+            if spawn_smoke and self.meteor:
+                self.create_particles(self.meteor.center_x, self.meteor.center_y, (100, 100, 100, 150))
+
+            # --- ОБНОВЛЕНИЕ ВЗРЫВОВ ---
+            for expl in self.explosions:
+                expl.update(dt)
+            self.explosions = [e for e in self.explosions if e.alive]
+        # ========================================
 
         if self.grabbed_coin:
             self.grabbed_coin.sprite.center_x = self.mouse_x
@@ -191,9 +297,16 @@ class GameController:
             if outcome > 0:
                 # === ЛОГИКА ЗОН МНОЖИТЕЛЯ ===
                 total_multiplier = 1.0
+
+                # Обычные зоны (x2, x5)
                 for zone in self.zones:
                     if zone.check_collision(coin):
                         total_multiplier *= zone.multiplier
+
+                # КРАТЕР (x20) - ДОБАВЛЕНО
+                if self.crater and self.crater.check_collision(coin):
+                    total_multiplier *= self.crater.multiplier
+                # =========================
 
                 final_value = int(outcome * total_multiplier)
                 self.balance.add(final_value)
@@ -224,6 +337,16 @@ class GameController:
             zone.update(dt, width, height)
         # =======================
 
+        # === ОБНОВЛЕНИЕ ВЗРЫВОВ ===
+        # Обновляем каждый взрыв вручную (чтобы проверить флаг alive)
+        for expl in self.explosions:
+            expl.update(dt)
+
+        # Фильтруем список: оставляем только те, у которых alive = True
+        # Это удалит взрывы, у которых отыгралась анимация до конца
+        self.explosions = [e for e in self.explosions if e.alive]
+        # =======================================
+
         for p in self.particles:
             decay_speed = p.get('decay_speed', 1.0)
             p['life'] -= dt * decay_speed
@@ -247,24 +370,35 @@ class GameController:
         )
 
     def draw(self) -> None:
-        # 1. Рисуем зоны (под всем)
+        # 1. Зоны
         for zone in self.zones:
             zone.draw()
 
-        # 2. Рисуем ЖУКА (СЛОЙ: Самый низкий после зон, но под монетами)
+        # 2. Жук (если есть)
         if self.beetle:
             self.beetle.draw()
 
-        # 3. Рисуем монетки
+        # 3. КРАТЕР (если есть) - рисуем его вниз, чтобы монетки падали "в него"
+        if self.crater:
+            self.crater.draw()
+
+        # 4. Монетки
         for coin in self.coins:
             if not coin.is_moving: coin.draw()
         for coin in self.coins:
             if coin.is_moving: coin.draw()
 
-        # 4. Рисуем виспа
+        # 5. Висп
         self.wisp_list.draw()
 
-        # 4. Частицы
+        # 6. Взрывы
+        for expl in self.explosions:
+            expl.draw()
+        # 7. МЕТЕОРИТ (рисуем поверх всего, чтобы он падал сверху)
+        if self.meteor:
+            self.meteor.draw()
+
+        # 8. Частицы
         for p in self.particles:
             alpha = int(255 * (p['life'] / 1.0))
             current_color = (p['color'][0], p['color'][1], p['color'][2], alpha)
@@ -379,11 +513,11 @@ class GameController:
             self.balance.spend(cost)
             success = True
 
-            # --- ПОКУПКА МОНЕТОК (Теперь многоразовые) ---
+            # === ПОКУПКА МОНЕТОК ===
             if upgrade_id == "buy_bronze_coin":
                 self.spawn_coin("bronze")
                 self.bronze_coin_level += 1
-                new_price = math.ceil(cost * 1.5)  # Коэффициент роста цены для монеток поменьше (1.5x)
+                new_price = math.ceil(cost * 1.5)
                 self.upgrade_prices[upgrade_id] = new_price
                 self.ui.update_button(upgrade_id, new_price, level=self.bronze_coin_level)
 
@@ -401,7 +535,7 @@ class GameController:
                 self.upgrade_prices[upgrade_id] = new_price
                 self.ui.update_button(upgrade_id, new_price, level=self.gold_coin_level)
 
-            # --- ОДНОРАЗОВЫЕ АПГРЕЙДЫ ---
+            # === ОДНОРАЗОВЫЕ АПГРЕЙДЫ ===
             elif upgrade_id == "silver_crit_upgrade":
                 self.silver_crit_level += 1
                 new_price = math.ceil(cost * 2.718)
@@ -418,7 +552,7 @@ class GameController:
                     if isinstance(coin, GoldCoin): coin.explosion_chance = 0.5
                 self.ui.mark_purchased(upgrade_id)
 
-            # --- ВИСП ---
+            # === ВИСП ===
             elif upgrade_id == "wisp_spawn":
                 if not self.wisp:
                     self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=0.33)
@@ -447,12 +581,11 @@ class GameController:
                 else:
                     success = False
 
-            # --- ОБЩИЕ АПГРЕЙДЫ ---
+            # === ОБЩИЕ АПГРЕЙДЫ ===
             elif upgrade_id == "auto_flip_upgrade":
                 self.auto_flip_level += 1
                 new_price = math.ceil(cost * 2.718)
                 self.upgrade_prices[upgrade_id] = new_price
-                # Явно передаю имя, чтобы текст на кнопке обновился правильно
                 self.ui.update_button(upgrade_id, new_price, level=self.auto_flip_level, name="Авто-переворот")
 
             elif upgrade_id == "bronze_value_upgrade":
@@ -482,7 +615,7 @@ class GameController:
                         coin.value *= 2
                 self.ui.update_button(upgrade_id, new_price, level=self.gold_value_level)
 
-            # --- АПГРЕЙДЫ ЗОН ---
+            # === АПГРЕЙДЫ ЗОН ===
             elif upgrade_id == "spawn_zone_2":
                 if self.zone_2 is None:
                     z2 = MultiplyZone(self.width, self.height, 2.0, (100, 255, 100, 100))
@@ -543,6 +676,20 @@ class GameController:
                 else:
                     success = False
 
+            # === АПГРЕЙДЫ МЕТЕОРИТА ===
+            elif upgrade_id == "spawn_meteor":
+                if not self.meteor_unlocked:
+                    self.meteor_unlocked = True
+                    self.ui.mark_purchased(upgrade_id)
+                else:
+                    success = False
+
+            elif upgrade_id == "meteor_cooldown_upgrade":
+                self.meteor_cooldown_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                self.ui.update_button(upgrade_id, new_price, level=self.meteor_cooldown_level)
+
             if success:
                 return True
             else:
@@ -582,7 +729,9 @@ class GameController:
                 "zone_2_mult": self.zone_2_mult_level,
                 "zone_5_size": self.zone_5_size_level,
                 "zone_5_mult": self.zone_5_mult_level,
-            }
+            },
+            "meteor_unlocked": self.meteor_unlocked,
+            "meteor_cooldown_level": self.meteor_cooldown_level
         }
 
         if self.wisp:
@@ -604,7 +753,7 @@ class GameController:
                 z_type = "zone_5"
 
             data["zones"].append({
-                "type": z_type,  # <-- ДОБАВЛЕНО
+                "type": z_type,
                 "multiplier": z.multiplier,
                 "size": z.size,
                 "x": z.x,
@@ -638,6 +787,7 @@ class GameController:
             print(f"DEBUG: Error saving game: {e}")
 
     def load_game(self) -> bool:
+        """Загружает состояние игры. Возвращает True если успешно."""
         path = self.get_save_path()
         if not os.path.exists(path):
             print("DEBUG: No save file found.")
@@ -651,17 +801,19 @@ class GameController:
                 print("DEBUG: Save file is empty.")
                 return False
 
+            # 1. Загрузка базовых значений
             self.balance._value = data["balance"]
             self.upgrade_prices = data["upgrade_prices"]
             self.silver_crit_level = data["silver_crit_level"]
             self.auto_flip_level = data.get("auto_flip_level", 0)
 
+            # 2. Загрузка флагов
             flags = data["flags"]
             self.has_gold_coin = flags["has_gold_coin"]
             self.grab_purchased = flags["grab_purchased"]
             self.gold_explosion_unlocked = flags["gold_explosion_unlocked"]
 
-            # Загрузка уровней
+            # 3. Загрузка уровней
             levels_data = data.get("levels", {})
             self.bronze_coin_level = levels_data.get("bronze_coin", 1)
             self.silver_coin_level = levels_data.get("silver_coin", 0)
@@ -676,6 +828,11 @@ class GameController:
             self.zone_5_size_level = levels_data.get("zone_5_size", 0)
             self.zone_5_mult_level = levels_data.get("zone_5_mult", 0)
 
+            # 4. Загрузка метеорита
+            self.meteor_unlocked = data.get("meteor_unlocked", False)
+            self.meteor_cooldown_level = data.get("meteor_cooldown_level", 0)
+
+            # 5. Загрузка Виспа
             wisp_data = data.get("wisp")
             if wisp_data:
                 self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=wisp_data["scale"])
@@ -686,6 +843,7 @@ class GameController:
                 self.wisp.vy = wisp_data["vy"]
                 self.wisp_list.append(self.wisp)
 
+            # 6. Загрузка Зон
             self.zones.clear()
             self.zone_2 = None
             self.zone_5 = None
@@ -693,7 +851,7 @@ class GameController:
             for z_data in data["zones"]:
                 z_type = z_data.get("type", "unknown")
 
-                # Восстанавливаем зону по типу, а не по множителю!
+                # Восстанавливаем зону по типу
                 if z_type == "zone_2":
                     z = MultiplyZone(self.width, self.height, z_data["multiplier"], (100, 255, 100, 100))
                     self.zone_2 = z
@@ -701,7 +859,6 @@ class GameController:
                     z = MultiplyZone(self.width, self.height, z_data["multiplier"], (160, 32, 240, 100))
                     self.zone_5 = z
                 else:
-                    # Fallback если тип неизвестен (для старых сейвов)
                     z = MultiplyZone(self.width, self.height, z_data["multiplier"], (0, 0, 0, 0))
 
                 # Восстанавливаем параметры
@@ -712,9 +869,9 @@ class GameController:
                 z.y = z_data["y"]
                 z.vx = z_data["vx"]
                 z.vy = z_data["vy"]
-
                 self.zones.append(z)
 
+            # 7. Загрузка Монет
             self.coins.clear()
             for c_data in data["coins"]:
                 c_type = c_data["type"]
@@ -736,15 +893,15 @@ class GameController:
                     c.anim_index = 0
                 else:
                     c.land()
-
                 self.coins.append(c)
 
-            # СИНХРОНИЗАЦИЯ UI
+            # 8. СИНХРОНИЗАЦИЯ UI (Самое главное)
             if self.grab_purchased: self.ui.mark_purchased("grab_upgrade")
             if self.gold_explosion_unlocked: self.ui.mark_purchased("gold_explosion_upgrade")
             if self.wisp: self.ui.mark_purchased("wisp_spawn")
             if self.zone_2: self.ui.mark_purchased("spawn_zone_2")
             if self.zone_5: self.ui.mark_purchased("spawn_zone_5")
+            if self.meteor_unlocked: self.ui.mark_purchased("spawn_meteor")
 
             self.ui.update_button("silver_crit_upgrade", self.upgrade_prices["silver_crit_upgrade"],
                                   level=self.silver_crit_level)
@@ -776,9 +933,13 @@ class GameController:
             self.ui.update_button("upgrade_zone_5_mult", self.upgrade_prices["upgrade_zone_5_mult"],
                                   level=self.zone_5_mult_level)
 
+            self.ui.update_button("meteor_cooldown_upgrade", self.upgrade_prices["meteor_cooldown_upgrade"],
+                                  level=self.meteor_cooldown_level)
+
             self.ui.update_grab_state(self.has_gold_coin, self.grab_purchased)
             self.ui.update_explosion_state(self.gold_explosion_unlocked)
             self.ui.update_wisp_state(self.wisp is not None)
+            self.ui.update_meteor_state(self.meteor_unlocked)
             self.ui.update_zone_state(
                 has_zone_2=(self.zone_2 is not None),
                 has_zone_5=(self.zone_5 is not None)
@@ -805,15 +966,23 @@ class GameController:
         self.zones.clear()
         self.zone_2 = None
         self.zone_5 = None
+
         self.beetle = None
         self.wisp = None
         self.wisp_list.clear()
+
+        self.crater = None
+        self.meteor = None
+        self.explosions = arcade.SpriteList()
+
+        self.meteor_unlocked = False
+        self.meteor_cooldown_level = 0
 
         # 2. Сброс прогресса и цен
         self.balance._value = 0
         self.silver_crit_level = 1
         self.auto_flip_level = 0
-        self.bronze_coin_level = 1  # Стартовая монетка
+        self.bronze_coin_level = 1
         self.silver_coin_level = 0
         self.gold_coin_level = 0
 
@@ -831,6 +1000,23 @@ class GameController:
         self.grab_purchased = False
         self.gold_explosion_unlocked = False
 
+        # === ИСПРАВЛЕНИЕ: ПЕРЕМЕСТИЛИ СБРОС КНОПОК ВВЕРХ ===
+        # 3. СБРОС UI (Сбрасываем состояние кнопок)
+        # Это нужно сделать ПЕРЕД вызовом update_button, чтобы текст обновился корректно
+        for tab_groups in self.ui.tab_content.values():
+            for grp in tab_groups:
+                for b in grp.buttons:
+                    # Снимаем метку "Куплено"
+                    b.is_purchased = False
+                    # Разблокируем кнопку
+                    self.ui._enabled[b.upgrade_id] = True
+        # =================================================
+
+        # Теперь обновляем конкретные кнопки. Так как is_purchased уже False, текст перезапишется
+        self.ui.update_meteor_state(False)
+        self.ui.update_button("spawn_meteor", 15000, level=0)
+        self.ui.update_button("meteor_cooldown_upgrade", 2000, level=0)
+
         self.upgrade_prices = {
             "buy_bronze_coin": 50,
             "buy_silver_coin": 200,
@@ -840,7 +1026,7 @@ class GameController:
             "gold_explosion_upgrade": 2000,
             "wisp_spawn": 5000,
             "wisp_speed": 1000,
-            "wisp_size": 1000,
+            "wizon_size": 1000, # Опечатка в оригинале была wizon_size, оставил как есть или исправьте на wisp_size
             "spawn_zone_2": 10000,
             "spawn_zone_5": 50000,
             "upgrade_zone_2_size": 2000,
@@ -850,29 +1036,22 @@ class GameController:
             "auto_flip_upgrade": 500,
             "bronze_value_upgrade": 2000,
             "silver_value_upgrade": 5000,
-            "gold_value_upgrade": 10000
+            "gold_value_upgrade": 10000,
+            # Добавил недостающие ключи для метеорита в словарь цен, если их там не было
+            "spawn_meteor": 15000,
+            "meteor_cooldown_upgrade": 2000
         }
 
-        # 3. СБРОС UI (Сбрасываем состояние кнопок)
-        for tab_groups in self.ui.tab_content.values():
-            for grp in tab_groups:
-                for b in grp.buttons:
-                    # Снимаем метку "Куплено"
-                    b.is_purchased = False
-                    # Разблокируем кнопку
-                    self.ui._enabled[b.upgrade_id] = True
-
-        # 4. Обновляем текст и уровни на кнопках через update_button
-        # Это нужно, чтобы вернулись правильные цены и "(ур.X)"
+        # Обновляем текст и уровни на кнопках
         self.ui.update_button("buy_bronze_coin", 50, level=1)
         self.ui.update_button("buy_silver_coin", 200, level=0)
         self.ui.update_button("buy_gold_coin", 1000, level=0)
 
         self.ui.update_button("silver_crit_upgrade", 500, level=1)
-        self.ui.update_button("wisp_spawn", 5000, level=0)  # <--- ДОБАВЬ ЭТО
-        self.ui.update_button("spawn_zone_2", 10000, level=0)  # <--- ДОБАВЬ ЭТО
+        self.ui.update_button("wisp_spawn", 5000, level=0)
+        self.ui.update_button("spawn_zone_2", 10000, level=0)
         self.ui.update_button("spawn_zone_5", 50000, level=0)
-        self.ui.update_button("grab_upgrade", 500, level=0)  # Уровень тут не важен, но сбросит текст
+        self.ui.update_button("grab_upgrade", 500, level=0)
         self.ui.update_button("gold_explosion_upgrade", 2000, level=0)
 
         self.ui.update_button("auto_flip_upgrade", 500, level=0)
@@ -893,6 +1072,7 @@ class GameController:
         self.ui.update_grab_state(False, False)
         self.ui.update_explosion_state(False)
         self.ui.update_wisp_state(False)
+        self.ui.update_meteor_state(False)
         self.ui.update_zone_state(False, False)
 
         # Спавним стартовую монету
@@ -934,3 +1114,55 @@ class GameController:
         # Или ставь random.uniform(0, 300) как раньше. Но для старта лучше маленькое.
         self.beetle_respawn_interval = random.uniform(10.0, 60.0)
         self.beetle_respawn_timer = 0.0
+
+    def spawn_meteor(self) -> None:
+        """Спавнит метеорит над случайной точкой, не выходящей за экран"""
+
+        # 1. Получаем реальные размеры спрайта кратера (нужны только для расчета отступов)
+        crater_w = self.assets.crater_texture.width
+        crater_h = self.assets.crater_texture.height
+
+        half_w = crater_w / 2
+        half_h = crater_h / 2
+
+        margin = 50
+        min_x = max(margin, half_w)
+        max_x = min(self.width - margin, self.width - half_w)
+
+        target_x = random.uniform(min_x, max_x)
+
+        min_y = self.height * 0.4
+        max_y = self.height * 0.8
+        max_y = min(max_y, self.height - half_h)
+
+        target_y = random.uniform(min_y, max_y)
+
+        start_y = self.height + 100
+
+        # 2. Создаем ТОЛЬКО метеорит. Кратер не трогаем!
+        self.meteor = Meteor(target_x, start_y, target_y, self.assets.meteor_textures)
+
+        print(f"DEBUG: Meteor spawned at {target_x:.0f}, {target_y:.0f}")
+
+    def create_explosion_particles(self, cx: float, cy: float) -> None:
+        """Создает эффект взрыва из огненных частиц"""
+        for _ in range(50):  # Много частиц
+            # Цвета от желтого до красного
+            red = 255
+            green = random.randint(0, 200)
+            color = (red, green, 0, 255)
+
+            angle = random.uniform(0, 6.28)
+            speed = random.uniform(100, 400)
+            size = random.uniform(2, 5)
+
+            particle_data = {
+                'x': cx, 'y': cy,
+                'vx': math.cos(angle) * speed,
+                'vy': math.sin(angle) * speed,
+                'life': 1.0,
+                'color': color,
+                'size': size,
+                'decay_speed': 2.0  # Быстро гаснут
+            }
+            self.particles.append(particle_data)

@@ -23,12 +23,16 @@ class AssetManager:
         self.gold_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
         self.wisp_sprites: list[arcade.Texture] = []
         self.beetle_sprites: list[arcade.Texture] = []
+        self.meteor_textures: list[arcade.Texture] = []
+        self.explosion_textures: list[arcade.Texture] = []
+        self.crater_texture: arcade.Texture = None
 
     def load_all(self) -> None:
         print("Loading assets...")
         self._load_coin_type("bronze_coin", self.bronze_coin_sprites, arcade.color.BRASS)
         self._load_coin_type("silver_coin", self.silver_coin_sprites, arcade.color.LIGHT_GRAY)
         self._load_coin_type("gold_coin", self.gold_coin_sprites, arcade.color.GOLD)
+        self._load_meteor_stuff()
 
         self._load_wisp_sprites()  # <--- Загрузка виспа
         self._load_beetle_sprites()
@@ -199,3 +203,39 @@ class AssetManager:
 
     def is_loaded(self) -> bool:
         return self._loaded
+
+    def _load_meteor_stuff(self) -> None:
+        # 1. Загрузка Метеорита (falling)
+        meteor_dir = os.path.join(self.base_dir, "sprites", "meteor")
+        if os.path.exists(meteor_dir):
+            files = sorted(os.listdir(meteor_dir))
+            for f in files:
+                if f.endswith(".png"):
+                    self.meteor_textures.append(arcade.load_texture(os.path.join(meteor_dir, f)))
+            print(f"  -> Loaded {len(self.meteor_textures)} Meteor sprites")
+        else:
+            print(f"  -> WARNING: Meteor folder not found at {meteor_dir}")
+
+        # 2. Загрузка Кратера (crater)
+        crater_path = os.path.join(self.base_dir, "sprites", "crater", "crater.png")
+        if not os.path.exists(crater_path):
+            crater_path = os.path.join(self.base_dir, "sprites", "crater", "Crater.png")  # Другой вариант регистра
+
+        if os.path.exists(crater_path):
+            self.crater_texture = arcade.load_texture(crater_path)
+            print("  -> Loaded Crater texture")
+        else:
+            print(f"  -> WARNING: Crater texture not found at {crater_path}")
+
+        # 3. Загрузка Взрыва (Explosion) - ИСПРАВЛЕННЫЙ ПУТЬ
+        # Ищем в папке view/sprites/Explosion
+        explosion_dir = os.path.join(self.base_dir, "sprites", "Explosion")
+
+        if os.path.exists(explosion_dir):
+            files = sorted(os.listdir(explosion_dir))
+            for f in files:
+                if f.endswith(".png"):
+                    self.explosion_textures.append(arcade.load_texture(os.path.join(explosion_dir, f)))
+            print(f"  -> Loaded {len(self.explosion_textures)} Explosion sprites from {explosion_dir}")
+        else:
+            print(f"  -> WARNING: Explosion folder not found at {explosion_dir}")

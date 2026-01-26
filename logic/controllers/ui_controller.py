@@ -90,7 +90,7 @@ class UIController:
 
             _UiGroupStub("Общее для монеток", [
                 _UiButtonStub("auto_flip_upgrade", "Авто-переворот", "Авто-переворот", 500, is_one_time=False, level=0),
-            ]),
+            ])
         ]
 
         # === ВКЛАДКА 1: КАРТА ===
@@ -123,6 +123,10 @@ class UIController:
                 _UiButtonStub("pendulum_unlock", "Разблокировать маятник", "Разблокировать маятник", 2000,
                               is_one_time=True),
             ]),
+            _UiGroupStub("Метеорит ( кратер дает зону х10)", [
+                _UiButtonStub("spawn_meteor", "Метеорит", "Метеорит", 15000, is_one_time=True),
+                _UiButtonStub("meteor_cooldown_upgrade", "CD метеорита", "CD метеорита", 2000, is_one_time=False, level=0),
+            ]),
         ]
 
         # === ВКЛАДКА 2: ОБЩЕЕ ===
@@ -149,7 +153,7 @@ class UIController:
         self._has_wisp = False
         self._has_zone_2 = False  # Флаг существования зоны x2
         self._has_zone_5 = False  # Флаг существования зоны x5
-
+        self._meteor_unlocked = False
         # Скролл
         self.scroll_y = 0
 
@@ -232,6 +236,9 @@ class UIController:
     def update_wisp_state(self, has_wisp: bool) -> None:
         self._has_wisp = has_wisp
 
+    def update_meteor_state(self, unlocked: bool) -> None:
+        self._meteor_unlocked = unlocked
+
     def update_zone_state(self, has_zone_2=None, has_zone_5=None) -> None:
         if has_zone_2 is not None:
             self._has_zone_2 = has_zone_2
@@ -255,13 +262,14 @@ class UIController:
                 for b in grp.buttons:
                     if b.upgrade_id == "finish_game" or b.upgrade_id == "new_game":
                         self._enabled[b.upgrade_id] = True
+                        continue
 
                     # === ПРОВЕРКА МАКСИМАЛЬНОГО УРОВНЯ ===
                     if b.max_level > 0 and b.level >= b.max_level:
                         b.title = f"{b.base_name} (уровень макс.)"
                         self._enabled[b.upgrade_id] = False
                         continue
-                        # ====================================
+                    # ====================================
 
                     # Если одноразовая уже куплена
                     if b.is_purchased:
@@ -269,17 +277,17 @@ class UIController:
                         continue
 
                     elif b.upgrade_id == "grab_upgrade":
-                        if self._has_gold and not self._grab_purchased:
+                        if self._has_gold and not b.is_purchased:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                         else:
                             self._enabled[b.upgrade_id] = False
 
-                        if self._grab_purchased:
-                            b.title = "ПКМ Золото (Куплено)"
+                        if b.is_purchased:
+                            b.title = f"{b.base_name} ({b.purchased_text})"
                         elif not self._has_gold:
-                            b.title = "ПКМ Золото (Нет золота)"
+                            b.title = f"{b.base_name} (Нет золота)"
                         else:
-                            b.title = f"ПКМ Золото ({self._format_number(b.base_cost)})"
+                            b.title = f"{b.base_name} ({self._format_number(b.base_cost)})"
 
                     elif b.upgrade_id == "gold_explosion_upgrade":
                         if self._explosion_purchased:
@@ -333,6 +341,14 @@ class UIController:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                         else:
                             self._enabled[b.upgrade_id] = False
+
+                            # === ЛОГИКА МЕТЕОРИТА (Убрано жеткое изменение названия) ===
+                    elif "meteor" in b.upgrade_id and b.upgrade_id != "spawn_meteor":
+                        if not self._meteor_unlocked:
+                            self._enabled[b.upgrade_id] = False
+                        else:
+                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                        # ==========================================
 
                     # === ЛОГИКА НОВЫХ ОБЩИХ АПГРЕЙДОВ ===
                     elif b.upgrade_id == "auto_flip_upgrade":
