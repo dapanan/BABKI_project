@@ -115,6 +115,11 @@ class GameController:
         self.mouse_velocity_history = []
         self.max_history_frames = 8
 
+        # === ИЗМЕНЕНИЯ ДЛЯ МЕНЮ ===
+        self.start_coin_x = world_width * 0.25
+        self.start_coin_y = world_height * 0.5
+        # ===========================
+
         # Инициализируем переменные жука
         self.beetle = None
         self.beetle_respawn_timer = 0.0
@@ -124,12 +129,17 @@ class GameController:
         if not self.load_game():
             self.spawn_coin("bronze")
 
-    def spawn_coin(self, coin_type: str):
-        w = self.width
-        h = self.height
-        margin = 100 * self.scale_factor
-        x = random.randint(int(margin), int(w - margin))
-        y = random.randint(int(margin), int(h - margin))
+    def spawn_coin(self, coin_type: str, x: float = None, y: float = None):
+        # === НОВАЯ ЛОГИКА КООРДИНАТ ===
+        # Если координаты не переданы, используем рандом (стандартное поведение)
+        if x is None or y is None:
+            w = self.width
+            h = self.height
+            margin = 100 * self.scale_factor
+            x = random.randint(int(margin), int(w - margin))
+            y = random.randint(int(margin), int(h - margin))
+        # Если передали x и y (например, при старте из меню), используем их
+        # ===============================
 
         if coin_type == "bronze":
             coin = BronzeCoin(x, y, self.assets.bronze_coin_sprites, scale=0.8 * self.scale_factor)
@@ -967,10 +977,10 @@ class GameController:
         self.zone_2 = None
         self.zone_5 = None
 
+        # Очистка жука, виспа и метеорита
         self.beetle = None
         self.wisp = None
         self.wisp_list.clear()
-
         self.crater = None
         self.meteor = None
         self.explosions = arcade.SpriteList()
@@ -1000,19 +1010,15 @@ class GameController:
         self.grab_purchased = False
         self.gold_explosion_unlocked = False
 
-        # === ИСПРАВЛЕНИЕ: ПЕРЕМЕСТИЛИ СБРОС КНОПОК ВВЕРХ ===
-        # 3. СБРОС UI (Сбрасываем состояние кнопок)
-        # Это нужно сделать ПЕРЕД вызовом update_button, чтобы текст обновился корректно
+        # 3. СБРОС UI (Сбрасываем состояние кнопок) - ПЕРЕНЕСЕНО ВВЕРХ
+        # Это критично: сбрасываем is_purchased ДО того, как обновим текст
         for tab_groups in self.ui.tab_content.values():
             for grp in tab_groups:
                 for b in grp.buttons:
-                    # Снимаем метку "Куплено"
                     b.is_purchased = False
-                    # Разблокируем кнопку
                     self.ui._enabled[b.upgrade_id] = True
-        # =================================================
 
-        # Теперь обновляем конкретные кнопки. Так как is_purchased уже False, текст перезапишется
+        # Обновляем цены кнопок метеорита
         self.ui.update_meteor_state(False)
         self.ui.update_button("spawn_meteor", 15000, level=0)
         self.ui.update_button("meteor_cooldown_upgrade", 2000, level=0)
@@ -1026,7 +1032,7 @@ class GameController:
             "gold_explosion_upgrade": 2000,
             "wisp_spawn": 5000,
             "wisp_speed": 1000,
-            "wizon_size": 1000, # Опечатка в оригинале была wizon_size, оставил как есть или исправьте на wisp_size
+            "wisp_size": 1000,
             "spawn_zone_2": 10000,
             "spawn_zone_5": 50000,
             "upgrade_zone_2_size": 2000,
@@ -1037,7 +1043,6 @@ class GameController:
             "bronze_value_upgrade": 2000,
             "silver_value_upgrade": 5000,
             "gold_value_upgrade": 10000,
-            # Добавил недостающие ключи для метеорита в словарь цен, если их там не было
             "spawn_meteor": 15000,
             "meteor_cooldown_upgrade": 2000
         }
@@ -1068,15 +1073,15 @@ class GameController:
         self.ui.update_button("upgrade_zone_5_size", 5000, level=0)
         self.ui.update_button("upgrade_zone_5_mult", 7000, level=0)
 
-        # Сбрасываем флаги UI, которые зависят от существования объектов
+        # Сбрасываем флаги UI
         self.ui.update_grab_state(False, False)
         self.ui.update_explosion_state(False)
         self.ui.update_wisp_state(False)
         self.ui.update_meteor_state(False)
         self.ui.update_zone_state(False, False)
 
-        # Спавним стартовую монету
-        self.spawn_coin("bronze")
+        # === ИСПРАВЛЕНИЕ БАГА: Спавним стартовую монетку ТОЛЬКО РАЗ в фиксированной позиции ===
+        self.spawn_coin("bronze", x=self.start_coin_x, y=self.start_coin_y)
 
         print("DEBUG: Game Reset.")
         return True
