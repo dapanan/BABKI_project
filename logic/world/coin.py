@@ -27,6 +27,11 @@ class Coin:
 
         self.radius = 32.0 * self.scale
 
+        self.lifetime = None  # Время жизни (0 = бесконечно)
+        self.fade_duration = 2.0 # Время угасания
+        self.is_fading = False
+
+
         # === ИСПРАВЛЕНИЕ ДЛЯ SPATIAL HASH ===
         self.sprite.coin = self
         # ===========================================
@@ -61,6 +66,20 @@ class Coin:
         self.MAX_SPEED = 2500.0 * self.world_scale  # <--- Масштабируем макс. скорость
 
     def update(self, dt: float, width: int, height: int, nearby_coins: list) -> None:
+
+        # === ЛОГИКА УГАСАНИЯ (DISAPPEAR) ===
+        # Проверяем, что lifetime существует и это число, больше нуля
+        if self.lifetime is not None and self.lifetime > 0:
+            self.lifetime -= dt
+            # Если начали угасать, уменьшаем альфа
+            if self.lifetime <= self.fade_duration:
+                self.is_fading = True
+                ratio = max(0, self.lifetime / self.fade_duration)
+                self.sprite.alpha = int(255 * ratio)
+
+            # Если время вышло, помечаем на удаление (в контроллере)
+            if self.lifetime <= 0:
+                return  # Не обновляем физику, если "мертв"
         # Список nearby_coins приходит из GameController, он уже оптимизирован через Spatial Hash
         from logic.world.gold_coin import GoldCoin
 
@@ -198,6 +217,7 @@ class Coin:
 
     def draw(self) -> None:
         if self.is_moving:
+            arcade.draw_sprite(self.sprite)
             arcade.draw_circle_filled(
                 self.sprite.center_x,
                 self.sprite.center_y - 10,

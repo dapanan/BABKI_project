@@ -68,21 +68,20 @@ class UIController:
         # === ВКЛАДКА 0: МОНЕТКИ ===
         self.tab_content[0] = [
             _UiGroupStub("Бронзовая монетка", [
-                # Сделал многоразовыми, добавил level=1
                 _UiButtonStub("buy_bronze_coin", "Купить бронзовую", "Купить бронзовую", 50, is_one_time=False,
                               level=1),
                 _UiButtonStub("bronze_value_upgrade", "Цена бронзы x2", "Цена бронзы x2", 2000, is_one_time=False,
                               level=0),
             ]),
+
             _UiGroupStub("Серебряная монетка", [
-                _UiButtonStub("buy_silver_coin", "Купить серебряную", "Купить серебряную", 200, is_one_time=False,
-                              level=0),
                 _UiButtonStub("silver_crit_upgrade", "Крит серебра", "Крит серебра", 500, is_one_time=False, level=1),
+
                 _UiButtonStub("silver_value_upgrade", "Цена серебра x2", "Цена серебра x2", 5000, is_one_time=False,
                               level=0),
             ]),
+
             _UiGroupStub("Золотая монетка", [
-                _UiButtonStub("buy_gold_coin", "Купить золотую", "Купить золотую", 1000, is_one_time=False, level=0),
                 _UiButtonStub("gold_explosion_upgrade", "Взрыв золота", "Взрыв золота", 2000, is_one_time=True),
                 _UiButtonStub("grab_upgrade", "ПКМ Золото", "ПКМ Золото", 500, is_one_time=True),
                 _UiButtonStub("gold_value_upgrade", "Цена золота x2", "Цена золота x2", 10000, is_one_time=False,
@@ -91,6 +90,11 @@ class UIController:
 
             _UiGroupStub("Общее для монеток", [
                 _UiButtonStub("auto_flip_upgrade", "Авто-переворот", "Авто-переворот", 500, is_one_time=False, level=0),
+
+                # === НОВЫЕ КНОПКИ СЛИЯНИЯ ===
+                _UiButtonStub("fuse_to_silver", "Слияние в серебро (5->1)", "Слияние в серебро", 0, is_one_time=False),
+                _UiButtonStub("fuse_to_gold", "Слияние в золото (3->1)", "Слияние в золото", 0, is_one_time=False),
+                # ===========================
             ])
         ]
 
@@ -129,6 +133,12 @@ class UIController:
                 _UiButtonStub("spawn_meteor", "Метеорит", "Метеорит", 15000, is_one_time=True),
                 _UiButtonStub("meteor_cooldown_upgrade", "CD метеорита", "CD метеорита", 2000, is_one_time=False, level=0),
             ]),
+            # === ГРУППА ДЛЯ ТЕСТА (DEBUG) ===
+            _UiGroupStub("DEBUG (Тест монет)", [
+                _UiButtonStub("debug_spawn_lucky", "Спавн Lucky Coin", "Спавн Lucky", 0, is_one_time=False),
+                _UiButtonStub("debug_spawn_cursed", "Спавн Cursed Coin", "Спавн Cursed", 0, is_one_time=False),
+            ])
+            # ==================================
         ]
 
         # === ВКЛАДКА 2: ОБЩЕЕ ===
@@ -262,7 +272,7 @@ class UIController:
                         self._enabled[upgrade_id] = False
                         return
 
-    def update(self, balance_value: int) -> None:
+    def update(self, balance_value: int, coin_counts=None) -> None:
         # Обновляем доступность кнопок
         for tab_groups in self.tab_content.values():
             for grp in tab_groups:
@@ -282,6 +292,11 @@ class UIController:
                     if b.is_purchased:
                         self._enabled[b.upgrade_id] = False
                         continue
+
+                    # === ЛОГИКА КРИПТА СЕРЕБРА (ВОЗВРАЩАЕМ) ===
+                    elif b.upgrade_id == "silver_crit_upgrade":
+                        self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                    # =========================================
 
                     elif b.upgrade_id == "grab_upgrade":
                         if self._has_gold and not b.is_purchased:
@@ -349,7 +364,7 @@ class UIController:
                         else:
                             self._enabled[b.upgrade_id] = False
 
-                            # === ЛОГИКА МЕТЕОРИТА (Убрано жеткое изменение названия) ===
+                    # === ЛОГИКА МЕТЕОРИТА ===
                     elif "meteor" in b.upgrade_id and b.upgrade_id != "spawn_meteor":
                         if not self._meteor_unlocked:
                             self._enabled[b.upgrade_id] = False
@@ -357,7 +372,7 @@ class UIController:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                         # ==========================================
 
-                        # === ЛОГИКА ТОРНАДО ===
+                    # === ЛОГИКА ТОРНАДО ===
                     elif b.upgrade_id == "spawn_tornado":
                         if self._has_tornado:
                             b.title = "Торнадо (Куплено)"
@@ -372,6 +387,34 @@ class UIController:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                     # ==========================
 
+                    # === ЛОГИКА СЛИЯНИЯ (НОВАЯ) ===
+                    elif b.upgrade_id == "fuse_to_silver":
+                        if coin_counts:
+                            have = coin_counts.get('bronze', 0)
+                            need = 5
+                            if have >= need:
+                                self._enabled[b.upgrade_id] = True
+                                b.title = f"Слияние в серебро (5->1)"
+                            else:
+                                self._enabled[b.upgrade_id] = False
+                                b.title = f"Слияние в серебро (нужно {need - have})"
+                        else:
+                            self._enabled[b.upgrade_id] = False
+
+                    elif b.upgrade_id == "fuse_to_gold":
+                        if coin_counts:
+                            have = coin_counts.get('silver', 0)
+                            need = 3
+                            if have >= need:
+                                self._enabled[b.upgrade_id] = True
+                                b.title = f"Слияние в золото (3->1)"
+                            else:
+                                self._enabled[b.upgrade_id] = False
+                                b.title = f"Слияние в золото (нужно {need - have})"
+                        else:
+                            self._enabled[b.upgrade_id] = False
+                    # ==============================
+
                     # === ЛОГИКА НОВЫХ ОБЩИХ АПГРЕЙДОВ ===
                     elif b.upgrade_id == "auto_flip_upgrade":
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
@@ -380,6 +423,7 @@ class UIController:
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
 
                     else:
+                        # Стандартная логика для остальных кнопок (например, бронза)
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
 
 

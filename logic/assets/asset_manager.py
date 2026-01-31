@@ -1,7 +1,7 @@
 from __future__ import annotations
 import os
 import arcade
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 
 
 class AssetManager:
@@ -21,6 +21,8 @@ class AssetManager:
         self.bronze_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
         self.silver_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
         self.gold_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
+        self.lucky_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
+        self.cursed_coin_sprites: dict[str, list[arcade.Texture] | arcade.Texture] = {}
         self.wisp_sprites: list[arcade.Texture] = []
         self.beetle_sprites: list[arcade.Texture] = []
         self.meteor_textures: list[arcade.Texture] = []
@@ -33,6 +35,15 @@ class AssetManager:
         self._load_coin_type("bronze_coin", self.bronze_coin_sprites, arcade.color.BRASS)
         self._load_coin_type("silver_coin", self.silver_coin_sprites, arcade.color.LIGHT_GRAY)
         self._load_coin_type("gold_coin", self.gold_coin_sprites, arcade.color.GOLD)
+        # === ЗАГРУЗКА СПЕЦИАЛЬНЫХ МОНЕТ (TINTING) ===
+        # Lucky Coin (Мягкий зеленый оттенок)
+        print("Generating Lucky Coin sprites...")
+        self._generate_tinted_coins("lucky_coin", self.gold_coin_sprites, (100, 200, 100, 200))
+
+        # Cursed Coin (Темно-серый оттенок)
+        print("Generating Cursed Coin sprites...")  # <--- Исправил текст
+        self._generate_tinted_coins("cursed_coin", self.gold_coin_sprites,
+                                    (40, 40, 40, 180))  # <--- Исправил название на "cursed_coin"
         self._load_meteor_stuff()
         self._load_tornado_stuff()
         self._load_wisp_sprites()  # <--- Загрузка виспа
@@ -252,3 +263,63 @@ class AssetManager:
             print(f"  -> Loaded {len(self.tornado_textures)} Tornado sprites")
         else:
             print(f"  -> WARNING: Tornado folder not found at {tornado_dir}")
+
+    def _generate_tinted_coins(self, target_name: str, source_sprites: dict, tint_color: tuple) -> None:
+        """Создает копии спрайтов с наложенным цветом"""
+        target_dict = {}
+
+        # Обрабатываем Heads и Tails (одиночные текстуры)
+        for key in ["heads", "tails"]:
+            if key in source_sprites:
+                source_tex = source_sprites[key]
+                target_dict[key] = self._create_tinted_texture(source_tex, tint_color)
+
+        # Обрабатываем анимации (списки)
+        for key in ["up", "down", "left", "right", "up_left", "up_right", "down_left", "down_right"]:
+            if key in source_sprites:
+                source_list = source_sprites[key]
+                target_list = []
+                for tex in source_list:
+                    target_list.append(self._create_tinted_texture(tex, tint_color))
+                target_dict[key] = target_list
+
+        if target_name == "lucky_coin":
+            self.lucky_coin_sprites = target_dict
+        elif target_name == "cursed_coin":
+            self.cursed_coin_sprites = target_dict
+
+    def _create_tinted_texture(self, source_texture: arcade.Texture, tint_color: tuple) -> arcade.Texture:
+        """Перекрашивает текстуру, СООХРАНЯЯ ПРОЗРАЧНОСТЬ"""
+        img = source_texture.image
+
+        if img is None:
+            return source_texture
+
+        # 1. Разделяем картинку на каналы (R, G, B, Alpha)
+        # Это позволяет сохранить форму монетки (прозрачные пиксели)
+        if img.mode == 'RGBA':
+            r, g, b, a = img.split()
+            # Объединяем только цвет, без прозрачности, и переводим в Ч/Б
+            rgb_img = Image.merge('RGB', (r, g, b))
+            gray = rgb_img.convert('L')
+        else:
+            # Если вдруг картинка без прозрачности, просто красим всё
+            gray = img.convert('L')
+            a = None
+
+        # 2. Берем цвет для окраски
+        r_tint, g_tint, b_tint, _ = tint_color
+
+        # 3. Красим черно-белую картинку в нужный цвет
+        # Black - это тени, White - это светлые части
+        colored = ImageOps.colorize(gray, black=(20, 20, 20), white=(r_tint, g_tint, b_tint))
+
+        # 4. Переводим результат в RGBA
+        colored_rgba = colored.convert('RGBA')
+
+        # 5. ВОЗВРАЩАЕМ ПРОЗРАЧНОСТЬ!
+        # Мы берем альфу (форму) из оригинала и накладываем на новую картинку
+        if a:
+            colored_rgba.putalpha(a)
+
+        return arcade.Texture(image=colored_rgba)

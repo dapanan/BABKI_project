@@ -16,6 +16,8 @@ from logic.world.map_activities.crater import Crater
 from logic.world.map_activities.meteor import Meteor
 from logic.world.map_activities.explosion import Explosion
 from logic.world.map_activities.tornado import Tornado
+from logic.world.lucky_coin import LuckyCoin
+from logic.world.cursed_coin import CursedCoin
 
 
 class GameController:
@@ -80,8 +82,6 @@ class GameController:
 
         self.upgrade_prices = {
             "buy_bronze_coin": 50,
-            "buy_silver_coin": 200,
-            "buy_gold_coin": 1000,
             "silver_crit_upgrade": 500,
             "grab_upgrade": 500,
             "gold_explosion_upgrade": 2000,
@@ -101,7 +101,10 @@ class GameController:
             "silver_value_upgrade": 5000,
             "gold_value_upgrade": 10000,
             "spawn_meteor": 15000,
-            "meteor_cooldown_upgrade": 2000
+            "meteor_cooldown_upgrade": 2000,
+            # === ДОБАВЛЯЕМ КНОПКИ СЛИЯНИЯ В ИНИЦИАЛИЗАЦИЮ ===
+            "fuse_to_silver": 0,
+            "fuse_to_gold": 0,
         }
 
         self.has_gold_coin = False
@@ -122,6 +125,9 @@ class GameController:
         self.mouse_dy = 0
         self.mouse_velocity_history = []
         self.max_history_frames = 8
+
+        self.spawn_special_coin_timer = 0.0  # Таймер спавна специальных монет
+        self.spawn_special_coin_interval = 1.0  # Проверяем каждую секунду
 
         self.start_coin_x = world_width * 0.25
         self.start_coin_y = world_height * 0.5
@@ -163,6 +169,13 @@ class GameController:
             else:
                 coin.explosion_chance = 0
 
+        elif coin_type == "lucky":
+            coin = LuckyCoin(x, y, self.assets.lucky_coin_sprites, scale=1.2 * self.scale_factor, scale_factor=self.scale_factor)
+            coin.explosion_chance = 0
+        elif coin_type == "cursed":
+            coin = CursedCoin(x, y, self.assets.cursed_coin_sprites, scale=1.2 * self.scale_factor, scale_factor=self.scale_factor)
+            coin.explosion_chance = 0
+
         self.coins.append(coin)
 
     def _get_coin_type_string(self, coin) -> str:
@@ -177,6 +190,7 @@ class GameController:
         width = self.width
         height = self.height
 
+        self.coins = [c for c in self.coins if not (hasattr(c, 'lifetime') and c.lifetime is not None and c.lifetime <= 0)]
         # === ЛОГИКА АВТО-ПЕРЕВОРОТА ===
         if self.auto_flip_level >= 1:
             self.auto_flip_timer += dt
@@ -185,7 +199,13 @@ class GameController:
 
             if self.auto_flip_timer >= flip_interval:
                 self.auto_flip_timer = 0
-                standing_coins = [c for c in self.coins if not c.is_moving and not c.is_moving]
+
+                # === ИСПРАВЛЕНИЕ: Исключаем спец-монетки из переворота ===
+                standing_coins = [c for c in self.coins
+                                  if not c.is_moving
+                                  and not isinstance(c, (LuckyCoin, CursedCoin))]
+                # ======================================================
+
                 if standing_coins:
                     coin_to_flip = random.choice(standing_coins)
                     dx = random.randint(-50, 50)
@@ -194,7 +214,6 @@ class GameController:
 
                     c_type = self._get_coin_type_string(coin_to_flip)
                     self.sound_manager.play_toss(c_type)
-        # =================================
 
         # === ЛОГИКА ТОРНАДО ===
         if self.tornado_unlocked:
@@ -241,6 +260,21 @@ class GameController:
             if self.beetle_respawn_timer >= self.beetle_respawn_interval:
                 self.spawn_beetle()
         # ===========================================
+
+        # === ЛОГИКА СПАВНА СПЕЦИАЛЬНЫХ МОНЕТ ===
+        self.spawn_special_coin_timer += dt
+        if self.spawn_special_coin_timer >= self.spawn_special_coin_interval:
+            self.spawn_special_coin_timer = 0
+
+            # Шанс 0.1% для Lucky (0.001)
+            if random.random() < 0.001:
+                print("DEBUG: Spawning Lucky Coin!")
+                self.spawn_coin("lucky")
+
+            # Шанс 0.01% для Cursed (0.0001)
+            elif random.random() < 0.0001:
+                self.spawn_coin("cursed")
+        # ==========================================
 
         # === ЛОГИКА МЕТЕОРИТА ===
         if self.meteor_unlocked:
@@ -314,40 +348,106 @@ class GameController:
 
         # Обновление монеток (физика, анимации)
         for coin in self.coins:
+            # Проверка на смерть монеты
+            if coin.lifetime is not None and coin.lifetime <= 0:
+                continue  # Пропускаем удаленные монеты
+
             if coin is self.grabbed_coin: continue
 
-            # ИСПРАВЛЕНИЕ: Используем правильный метод get_objects_near_point
-            nearby_sprites = self.spatial_hash.get_sprites_near_point((coin.sprite.center_x, coin.sprite.center_y))
+        # === ОБНОВЛЕНИЕ МОНЕТОК И СОБЫТИЙ ===
+        for coin in self.coins:
+            if coin is self.grabbed_coin: continue
 
-            # Преобразуем спрайты обратно в объекты Coin
+            # Получаем соседей через Spatial Hash
+            nearby_sprites = self.spatial_hash.get_sprites_near_point((coin.sprite.center_x, coin.sprite.center_y))
             nearby_coins = []
             for spr in nearby_sprites:
                 if hasattr(spr, 'coin') and spr.coin is not coin:
                     nearby_coins.append(spr.coin)
 
-            # Передаем в update только соседей
+            # Обновляем физику монетки
             coin.update(dt, width, height, nearby_coins)
 
+            # === ПРОВЕРКА ПРИЗЕМЛЕНИЯ И ВЫДАЧА НАГРАДЫ ===
             outcome = coin.check_land_event()
             if outcome > 0:
                 total_multiplier = 1.0
-                for zone in self.zones:
-                    if zone.check_collision(coin):
-                        total_multiplier *= zone.multiplier
-                if self.crater and self.crater.check_collision(coin):
-                    total_multiplier *= self.crater.multiplier
-
+                # (Здесь может быть логика зон, если она у тебя есть)
                 final_value = int(outcome * total_multiplier)
                 self.balance.add(final_value)
-                # =================================
 
+                # Критический эффект серебра
                 is_crit_now = False
                 if isinstance(coin, SilverCoin) and coin.is_crit:
                     is_crit_now = True
                     coin.is_crit = False
+
                 if is_crit_now:
                     self.create_particles(coin.sprite.center_x, coin.sprite.center_y, (192, 192, 192, 255), coin)
+            # === ЛОГИКА СПЕЦ МОНЕТ ===
 
+            # Lucky Coin
+            if isinstance(coin, LuckyCoin):
+                # === ИСПРАВЛЕНИЕ: Обрабатываем только если монетка УЖЕ ПРИЗЕМЛИЛАСЬ ===
+                if coin.landed:
+                    if outcome > 0 and not coin.sound_played:
+                        current_balance = self.balance.get()
+                        new_balance = current_balance * 5
+                        self.balance.set(new_balance)
+                        if self.sound_manager.lucky_success:
+                            arcade.play_sound(self.sound_manager.lucky_success, volume=0.3)
+                        coin.sound_played = True
+
+                    elif outcome == 0 and not coin.sound_played:
+                        # === ИСПРАВЛЕНИЕ: Звук падения золотой монетки ===
+                        c_type = "gold"
+                        self.sound_manager.play_land(c_type)
+                        # ==================================================
+                        coin.sound_played = True
+
+            # Cursed Coin
+            elif isinstance(coin, CursedCoin):
+
+                # УСПЕХ (Орел)
+                if outcome > 0 and not coin.sound_played:
+                    current_balance = self.balance.get()
+                    new_balance = current_balance * 100
+                    self.balance.set(new_balance)
+                    if self.sound_manager.cursed_success:
+                        arcade.play_sound(self.sound_manager.cursed_success, volume=0.3)
+                    coin.sound_played = True
+
+                # ПРОВАЛ (Решка)
+                if coin.bankruptcy_triggered:
+                    if self.sound_manager.cursed_fail:
+                        arcade.play_sound(self.sound_manager.cursed_fail, volume=0.3)
+
+                    cx, cy = coin.sprite.center_x, coin.sprite.center_y
+
+                    self.balance.set(0)
+                    print("DEBUG: CURSED COIN TOOK ALL MONEY!")
+
+                    self.create_explosion_particles(cx, cy)
+
+                    for c in self.coins:
+                        if c is not coin:
+                            dx = c.sprite.center_x - cx
+                            dy = c.sprite.center_y - cy
+                            dist_sq = dx * dx + dy * dy
+                            if dist_sq > 0:
+                                dist = math.sqrt(dist_sq)
+                                force = 2000.0 * (1.0 - min(dist / 1000.0, 0.5))
+                                nx = dx / dist
+                                ny = dy / dist
+                                c.vx += nx * force
+                                c.vy += ny * force
+                                c.is_moving = True
+                                c._select_flying_animation()
+
+                    coin.bankruptcy_triggered = False
+                    coin.sound_played = True
+
+            # === ОБЫЧНЫЕ ЗВУКИ ПЕРЕБРАСЫВАНИЯ ===
             if coin.needs_toss_sound:
                 c_type = self._get_coin_type_string(coin)
                 self.sound_manager.play_toss(c_type)
@@ -357,6 +457,7 @@ class GameController:
                 c_type = self._get_coin_type_string(coin)
                 self.sound_manager.play_land(c_type)
                 coin.landed = False
+        # ==========================================
 
         if self.wisp:
             self.wisp.update(dt, width, height, self.coins, self.grabbed_coin)
@@ -389,6 +490,7 @@ class GameController:
             has_zone_2=(self.zone_2 is not None),
             has_zone_5=(self.zone_5 is not None)
         )
+        self.ui.update(self.balance.get(), self.get_coin_counts())
 
     def draw(self) -> None:
         for zone in self.zones:
@@ -425,17 +527,22 @@ class GameController:
             if x < self.width:
                 clicked_coin = False
                 for coin in self.coins:
-                    # === ИСПРАВЛЕНИЕ: ПУНКТ 6 - НЕЛЬЗЯ НАЖАТЬ НА ЛЕТЯЩИЕ ===
+                    # === ИСПРАВЛЕНИЕ: НЕЛЬЗЯ НАЖАТЬ НА ЛЕТЯЩИЕ ===
                     if not coin.is_moving and coin is not self.grabbed_coin:
                         # ========================================================
                         dx = x - coin.sprite.center_x
                         dy = y - coin.sprite.center_y
                         if dx * dx + dy * dy < (coin.radius * coin.radius):
-                            coin.hit(dx, dy)
-                            c_type = self._get_coin_type_string(coin)
-                            self.sound_manager.play_toss(c_type)
-                            clicked_coin = True
-                            break
+                            # Проверяем, не была ли уже использована спец-монетка
+                            is_special_used = isinstance(coin, (LuckyCoin, CursedCoin)) and getattr(coin, 'is_used',
+                                                                                                    False)
+
+                            if not is_special_used:
+                                coin.hit(dx, dy)
+                                c_type = self._get_coin_type_string(coin)
+                                self.sound_manager.play_toss(c_type)
+                                clicked_coin = True
+                                break
 
                 if not clicked_coin and self.beetle and self.beetle.can_be_clicked:
                     dx = x - self.beetle.center_x
@@ -544,19 +651,53 @@ class GameController:
                 self.upgrade_prices[upgrade_id] = new_price
                 self.ui.update_button(upgrade_id, new_price, level=self.bronze_coin_level)
 
-            elif upgrade_id == "buy_silver_coin":
-                self.spawn_coin("silver")
-                self.silver_coin_level += 1
-                new_price = math.ceil(cost * 1.5)
-                self.upgrade_prices[upgrade_id] = new_price
-                self.ui.update_button(upgrade_id, new_price, level=self.silver_coin_level)
+                # === СЛИЯНИЕ В СЕРЕБРО ===
+            elif upgrade_id == "fuse_to_silver":
+                bronze_coins = [c for c in self.coins if isinstance(c, BronzeCoin)]
+                if len(bronze_coins) >= 5:
+                    # Берем координаты первой монеты для спавна новой
+                    target_x = bronze_coins[0].sprite.center_x
+                    target_y = bronze_coins[0].sprite.center_y
 
-            elif upgrade_id == "buy_gold_coin":
-                self.spawn_coin("gold")
-                self.gold_coin_level += 1
-                new_price = math.ceil(cost * 1.5)
-                self.upgrade_prices[upgrade_id] = new_price
-                self.ui.update_button(upgrade_id, new_price, level=self.gold_coin_level)
+                    # Удаляем 5 штук
+                    for i in range(5):
+                        c = bronze_coins[i]
+                        self.coins.remove(c)
+                        # УБРАЛИ: self.create_particles(...) — старый эффект удаления
+
+                    # ДОБАВИЛИ: Эффект слияния
+                    self.create_fusion_flash(target_x, target_y, "silver")
+
+                    # Спавним одну серебряную
+                    self.spawn_coin("silver", x=target_x, y=target_y)
+                    if self.sound_manager.merge_sound:
+                        arcade.play_sound(self.sound_manager.merge_sound)
+                else:
+                    success = False
+            # =========================
+
+            # === СЛИЯНИЕ В ЗОЛОТО ===
+            elif upgrade_id == "fuse_to_gold":
+                silver_coins = [c for c in self.coins if isinstance(c, SilverCoin)]
+                if len(silver_coins) >= 3:
+                    target_x = silver_coins[0].sprite.center_x
+                    target_y = silver_coins[0].sprite.center_y
+
+                    for i in range(3):
+                        c = silver_coins[i]
+                        self.coins.remove(c)
+                        # УБРАЛИ: self.create_particles(...) — старый эффект (крит)
+
+                    # ДОБАВИЛИ: Эффект слияния
+                    self.create_fusion_flash(target_x, target_y, "gold")
+
+                    self.spawn_coin("gold", x=target_x, y=target_y)
+
+                    if self.sound_manager.merge_sound:
+                        arcade.play_sound(self.sound_manager.merge_sound)
+                else:
+                    success = False
+            # =======================
 
             elif upgrade_id == "silver_crit_upgrade":
                 self.silver_crit_level += 1
@@ -723,11 +864,21 @@ class GameController:
                 self.upgrade_prices[upgrade_id] = new_price
                 self.ui.update_button(upgrade_id, new_price, level=self.meteor_cooldown_level)
 
+                # === ЛОГИКА DEBUG КНОПОК ===
+            elif upgrade_id == "debug_spawn_lucky":
+                self.spawn_coin("lucky")
+                return True  # Возвращаем успех, но деньги не списываем (цена 0)
+            elif upgrade_id == "debug_spawn_cursed":
+                self.spawn_coin("cursed")
+                return True
+            # ===============================
+
             if success:
                 return True
             else:
                 self.balance.add(cost)
                 return False
+
 
         return False
 
@@ -801,6 +952,10 @@ class GameController:
                 coin_type = "silver"
             elif isinstance(coin, GoldCoin):
                 coin_type = "gold"
+            elif isinstance(coin, LuckyCoin):
+                coin_type = "lucky"
+            elif isinstance(coin, CursedCoin):
+                coin_type = "cursed"
 
             data["coins"].append({
                 "type": coin_type,
@@ -912,6 +1067,7 @@ class GameController:
             self.coins.clear()
             for c_data in data["coins"]:
                 c_type = c_data["type"]
+
                 if c_type == "bronze":
                     c = BronzeCoin(c_data["x"], c_data["y"], self.assets.bronze_coin_sprites, scale=c_data["scale"],
                                    scale_factor=self.scale_factor)
@@ -922,6 +1078,12 @@ class GameController:
                 elif c_type == "gold":
                     c = GoldCoin(c_data["x"], c_data["y"], self.assets.gold_coin_sprites, scale=c_data["scale"],
                                  scale_factor=self.scale_factor)
+                elif c_type == "lucky":
+                    c = LuckyCoin(c_data["x"], c_data["y"], self.assets.lucky_coin_sprites,
+                                  scale=c_data["scale"], scale_factor=self.scale_factor)
+                elif c_type == "cursed":
+                    c = CursedCoin(c_data["x"], c_data["y"], self.assets.cursed_coin_sprites,
+                                   scale=c_data["scale"], scale_factor=self.scale_factor)
 
                 c.vx = c_data["vx"]
                 c.vy = c_data["vy"]
@@ -932,6 +1094,7 @@ class GameController:
                     c.anim_index = 0
                 else:
                     c.land()
+                    c.landed = False
                 self.coins.append(c)
 
             if self.grab_purchased: self.ui.mark_purchased("grab_upgrade")
@@ -948,9 +1111,6 @@ class GameController:
 
             self.ui.update_button("buy_bronze_coin", self.upgrade_prices["buy_bronze_coin"],
                                   level=self.bronze_coin_level)
-            self.ui.update_button("buy_silver_coin", self.upgrade_prices["buy_silver_coin"],
-                                  level=self.silver_coin_level)
-            self.ui.update_button("buy_gold_coin", self.upgrade_prices["buy_gold_coin"], level=self.gold_coin_level)
 
             self.ui.update_button("bronze_value_upgrade", self.upgrade_prices["bronze_value_upgrade"],
                                   level=self.bronze_value_level)
@@ -1056,8 +1216,6 @@ class GameController:
 
         self.upgrade_prices = {
             "buy_bronze_coin": 50,
-            "buy_silver_coin": 200,
-            "buy_gold_coin": 1000,
             "silver_crit_upgrade": 500,
             "grab_upgrade": 500,
             "gold_explosion_upgrade": 2000,
@@ -1077,12 +1235,12 @@ class GameController:
             "spawn_meteor": 15000,
             "meteor_cooldown_upgrade": 2000,
             "spawn_tornado": 15000,
-            "tornado_cooldown_upgrade": 2000
+            "tornado_cooldown_upgrade": 2000,
+            "fuse_to_silver": 0,
+            "fuse_to_gold": 0,
         }
 
         self.ui.update_button("buy_bronze_coin", 50, level=1)
-        self.ui.update_button("buy_silver_coin", 200, level=0)
-        self.ui.update_button("buy_gold_coin", 1000, level=0)
 
         self.ui.update_button("silver_crit_upgrade", 500, level=1)
         self.ui.update_button("wisp_spawn", 5000, level=0)
@@ -1214,3 +1372,16 @@ class GameController:
         self.tornado_list.append(self.tornado)
 
         print(f"DEBUG: Tornado spawned at {target_x:.0f}, {target_y:.0f}")
+
+    def get_coin_counts(self) -> dict:
+        """Подсчитывает количество монет каждого типа на поле"""
+        counts = {"bronze": 0, "silver": 0, "gold": 0}
+        for coin in self.coins:
+            if isinstance(coin, BronzeCoin):
+                counts["bronze"] += 1
+            elif isinstance(coin, SilverCoin):
+                counts["silver"] += 1
+            elif isinstance(coin, GoldCoin):
+                counts["gold"] += 1
+        return counts
+

@@ -5,6 +5,13 @@ class Balance:
     def add(self, amount: int) -> None:
         self._value += max(0, amount)
 
+    def set(self, amount: int) -> None:
+        """Устанавливает точное значение баланса"""
+        self._value = max(0, amount)
+
+    def get(self) -> int:
+        return self._value
+
     def can_spend(self, amount: int) -> bool:
         return self._value >= amount
 
@@ -15,6 +22,3 @@ class Balance:
             return False
         self._value -= amount
         return True
-
-    def get(self) -> int:
-        return self._value

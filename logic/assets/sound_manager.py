@@ -27,6 +27,11 @@ class SoundManager:
         self.beetle_dead_sound = None
         self.boom_sound = None
         self.tornado_sound = None
+        self.merge_sound = None
+        self.lucky_success = None
+        self.lucky_fail = None
+        self.cursed_success = None
+        self.cursed_fail = None
 
     def load_all(self) -> None:
         base_sound_dir = "view/sounds"
@@ -102,6 +107,41 @@ class SoundManager:
             print("  -> Loaded Tornado sound")
         else:
             print("  -> WARNING: Tornado sound not found")
+
+        # ... (код загрузки других звуков) ...
+
+        print("--- Loading Merge Sound ---")
+        # Убедись, что файл у тебя лежит в view/sounds/merge/merge.mp3 или смени путь
+        merge_path = os.path.join(base_sound_dir, "merge", "merge.mp3")
+        if os.path.exists(merge_path):
+            self.merge_sound = arcade.load_sound(merge_path)
+            print("  -> Loaded Merge sound")
+        else:
+            print("  WARNING: Merge sound not found at view/sounds/merge/merge.mp3")
+        print("--- Loading Special Coin Sounds ---")
+
+        # === Lucky Coin ===
+        # Удачная (Орел)
+        self.lucky_success = self._load_sound_safe(os.path.join(base_sound_dir, "lucky_coin"), "lucky_coin_win")
+
+        # Неудачная (Решка) - На скрине этого файла нет, используем удачный как заглушку
+        self.lucky_fail = self._load_sound_safe(os.path.join(base_sound_dir, "lucky_coin"), "lucky_coin_win")
+
+        # === Cursed Coin ===
+        # Удачная (Орел)
+        self.cursed_success = self._load_sound_safe(os.path.join(base_sound_dir, "cursed_coin"), "cursed_coin_win")
+
+        # Неудачная (Решка) - Этот файл есть на скрине
+        self.cursed_fail = self._load_sound_safe(os.path.join(base_sound_dir, "cursed_coin"), "cursed_coin_fail")
+
+    def _load_sound_safe(self, base_dir: str, filename: str):
+        """Вспомогательный метод для загрузки звука"""
+        path = os.path.join(base_dir, f"{filename}.mp3")
+        if os.path.exists(path):
+            # === ИСПРАВЛЕНИЕ: looping=False принудительно ===
+            return arcade.load_sound(path)
+        print(f"  -> WARNING: Sound {filename} not found")
+        return None
 
     def _load_sounds_from_dir(self, directory_paths: list[str], target_list: list, label: str) -> None:
         """Ищет звуки в первой доступной папке из списка directory_paths"""

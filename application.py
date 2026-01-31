@@ -237,7 +237,7 @@ class GameWindow(arcade.Window):
 
         elif self.state == STATE_GAME:
             self.game.update(dt)
-            self.ui.update(self.game.balance.get())
+            self.ui.update(self.game.balance.get(), self.game.get_coin_counts())
 
     def _handle_menu_collisions(self):
         """Простое разделение монет при столкновении"""
