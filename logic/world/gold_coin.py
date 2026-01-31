@@ -8,14 +8,16 @@ class GoldCoin(Coin):
             x: float,
             y: float,
             sprites: dict,
-            scale: float = 1.5
+            scale: float = 1.5,
+            scale_factor: float = 1.0 # <--- Добавили аргумент
     ) -> None:
         super().__init__(
             x=x,
             y=y,
             sprites=sprites,
             value=5,
-            scale=scale
+            scale=scale,
+            scale_factor=scale_factor # <--- Передали в родительский класс
         )
         # Chance здесь 0.0, управляется в game_controller через unlock
 

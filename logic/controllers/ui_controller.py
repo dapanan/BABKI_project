@@ -37,6 +37,7 @@ class UIController:
         self.panel_x = panel_x
         self.panel_width = panel_width
         self.panel_height = panel_height
+        self._has_tornado = False
 
         self.ui_assets = ui_assets
         self.current_font = "RuneScape-ENA"
@@ -119,10 +120,11 @@ class UIController:
                               level=0),
             ]),
 
-            _UiGroupStub("Маятник", [
-                _UiButtonStub("pendulum_unlock", "Разблокировать маятник", "Разблокировать маятник", 2000,
-                              is_one_time=True),
+            _UiGroupStub("Торнадо", [
+                _UiButtonStub("spawn_tornado", "Торнадо", "Торнадо", 15000, is_one_time=True),
+                _UiButtonStub("tornado_cooldown_upgrade", "CD Торнадо", "CD Торнадо", 2000, is_one_time=False, level=0),
             ]),
+
             _UiGroupStub("Метеорит ( кратер дает зону х10)", [
                 _UiButtonStub("spawn_meteor", "Метеорит", "Метеорит", 15000, is_one_time=True),
                 _UiButtonStub("meteor_cooldown_upgrade", "CD метеорита", "CD метеорита", 2000, is_one_time=False, level=0),
@@ -205,7 +207,7 @@ class UIController:
                         b.base_cost = cost
                         b.level = level
 
-                        # 2. Если передали новое имя, обновляем базу (используется для автопереворота)
+                        # 2. Если передали новое имя, обновляем базу
                         if name is not None:
                             b.base_name = name
                             b.title = name
@@ -215,9 +217,11 @@ class UIController:
 
                         if b.is_one_time:
                             # Одноразовые обычно обновляются только через mark_purchased
-                            # Но если сюда попали (например, крит серебра), просто обновим цену внутри текста
                             if not b.is_purchased:
                                 b.title = f"{b.base_name} ({price_str})"
+                            else:
+                            # Если уже куплено, не меняем текст (оставим "Куплено")
+                                pass
                         else:
                             # Многоразовые
                             if level > 0:
@@ -244,6 +248,9 @@ class UIController:
             self._has_zone_2 = has_zone_2
         if has_zone_5 is not None:
             self._has_zone_5 = has_zone_5
+
+    def update_tornado_state(self, unlocked: bool):
+        self._has_tornado = unlocked
 
     def set_button_disabled(self, upgrade_id: str, title: str) -> None:
         # Ищем кнопку внутри вкладок и групп
@@ -350,6 +357,21 @@ class UIController:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                         # ==========================================
 
+                        # === ЛОГИКА ТОРНАДО ===
+                    elif b.upgrade_id == "spawn_tornado":
+                        if self._has_tornado:
+                            b.title = "Торнадо (Куплено)"
+                            self._enabled[b.upgrade_id] = False
+                        else:
+                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+
+                    elif "tornado" in b.upgrade_id and b.upgrade_id != "spawn_tornado":
+                        if not self._has_tornado:
+                            self._enabled[b.upgrade_id] = False
+                        else:
+                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                    # ==========================
+
                     # === ЛОГИКА НОВЫХ ОБЩИХ АПГРЕЙДОВ ===
                     elif b.upgrade_id == "auto_flip_upgrade":
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
@@ -359,6 +381,7 @@ class UIController:
 
                     else:
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+
 
     def draw(self, balance_value: int) -> None:
         # 1. Фон панели (Самый нижний слой)
@@ -616,7 +639,6 @@ class UIController:
                 for b in grp.buttons:
                     if b.upgrade_id == upgrade_id:
                         b.is_purchased = True
-                        # Используем base_name, чтобы убрать цену (если она была в title)
                         b.title = f"{b.base_name} ({b.purchased_text})"
                         self._enabled[upgrade_id] = False
                         return

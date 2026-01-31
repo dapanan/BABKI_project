@@ -4,7 +4,7 @@ import random
 
 
 class Wisp(arcade.Sprite):
-    def __init__(self, x, y, sprites_list, speed=100, scale=1.0):
+    def __init__(self, x, y, sprites_list, speed=100, scale=1.0, scale_factor=1.0):
         super().__init__()
 
         self.textures = sprites_list
@@ -14,6 +14,7 @@ class Wisp(arcade.Sprite):
         self.center_x = x
         self.center_y = y
         self.scale = scale
+        self.scale_factor = scale_factor # <--- Сохраняем
 
         self.speed = speed
         angle = random.uniform(0, 2 * math.pi)
@@ -95,7 +96,8 @@ class Wisp(arcade.Sprite):
                     coin.wisp_immunity_timer = 3.0
 
     def upgrade_speed(self, amount: float):
-        self.speed += amount
+        # ИСПРАВЛЕНИЕ: Масштабируем добавку скорости
+        self.speed += amount * self.scale_factor
         current_speed_vec = math.sqrt(self.vx ** 2 + self.vy ** 2)
         if current_speed_vec > 0:
             self.vx = (self.vx / current_speed_vec) * self.speed

@@ -3,7 +3,7 @@ import random
 
 
 class Beetle(arcade.Sprite):
-    def __init__(self, x, y, sprites_dict):
+    def __init__(self, x, y, sprites_dict, scale_factor=1.0):
         super().__init__()
 
         # Загрузка текстур
@@ -19,7 +19,7 @@ class Beetle(arcade.Sprite):
             self.texture = self.frames["down"][0]
             self.current_anim_frames = self.frames["down"]
         else:
-            # Заглушка (если не загрузились текстуры)
+            # Заглушка
             from PIL import Image
             pil_image = Image.new("RGBA", (64, 64), arcade.color.PURPLE)
             self.texture = arcade.Texture(image=pil_image)
@@ -29,8 +29,10 @@ class Beetle(arcade.Sprite):
         self.center_y = y
 
         # ПАРАМЕТРЫ ЖУКА
-        self.scale = 0.3  # Размер (0.3 - в 3+ раза меньше монет)
-        self.speed = 80.0  # Скорость (медленная)
+        # ИСПРАВЛЕНИЕ: Визуальный размер зависит от масштаба
+        self.scale = 0.3 * scale_factor
+        # ИСПРАВЛЕНИЕ: Скорость зависит от масштаба
+        self.speed = 80.0 * scale_factor
 
         # Логика движения
         self.state = "IDLE"

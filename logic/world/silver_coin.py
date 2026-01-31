@@ -9,20 +9,18 @@ class SilverCoin(Coin):
             y: float,
             sprites: dict,
             crit_chance: float = 0.0,
-            scale: float = 1.1
-
+            scale: float = 1.1,
+            scale_factor: float = 1.0  # <--- Добавили аргумент
     ) -> None:
         super().__init__(
             x=x,
             y=y,
             sprites=sprites,
             value=2,
-            scale=scale
+            scale=scale,
+            scale_factor=scale_factor  # <--- Передали в родительский класс
         )
-
-        # Заглушка 100% для тестов
-        self.crit_chance = 1.0
-
+        self.crit_chance = 1.0  # Заглушка
         self.is_crit = False
 
     def land(self) -> None:

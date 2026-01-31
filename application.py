@@ -11,7 +11,7 @@ from logic.assets.sound_manager import SoundManager
 # --- АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ РАЗРЕШЕНИЯ ---
 screen_width, screen_height = arcade.get_display_size()
 scale_factor = screen_height / 1080.0
-scale_factor = max(scale_factor, 1.0)
+
 
 PANEL_WIDTH = int(500 * scale_factor)
 SCREEN_TITLE = "Incremental Coin Game"
@@ -150,7 +150,7 @@ class GameWindow(arcade.Window):
 
         self.title_text = arcade.Text(
             "Incremental coin game",
-            cx, self.height * 0.85, arcade.color.WHITE,
+            cx, screen_height * 0.85, arcade.color.WHITE,
             font_size=int(40 * scale_factor), font_name=self.menu_font, anchor_x="center"
         )
 
@@ -160,6 +160,30 @@ class GameWindow(arcade.Window):
         self.btn_exit_text = arcade.Text("Выйти", cx, cy - (80 * scale_factor), arcade.color.LIGHT_GRAY,
                                          font_size=int(20 * scale_factor), font_name=self.menu_font, anchor_x="center",
                                          anchor_y="center")
+        # --- Кнопка "Как играть?" ---
+        self.showing_help = False  # Флаг показа окна справки
+        self.btn_help = {
+            "x": cx,
+            "y": cy + (80 * scale_factor),  # Располагаем выше кнопки "Играть"
+            "w": btn_w,
+            "h": btn_h,
+            "text": "Как играть?"
+        }
+        self.btn_help_text = arcade.Text(
+            "Как играть?", cx, cy + (80 * scale_factor),
+            arcade.color.LIGHT_GRAY,
+            font_size=int(20 * scale_factor),
+            font_name=self.menu_font,
+            anchor_x="center",
+            anchor_y="center"
+        )
+
+        # Параметры окна справки
+        self.help_w = screen_width // 2
+        self.help_h = screen_height // 2
+        self.help_x = (screen_width - self.help_w) // 2
+        self.help_y = (screen_height - self.help_h) // 2
+        self.close_btn_size = 40 * scale_factor
 
         print(f"--- SYSTEM INFO ---")
         print(f"Save exists: {self.has_save}")
@@ -208,7 +232,7 @@ class GameWindow(arcade.Window):
         if self.state == STATE_MENU:
             # Обновляем монетки меню
             self.menu_coins.update(dt)
-            # Простая физика столкновений монеток между собой
+            # Столкновения монеток меню
             self._handle_menu_collisions()
 
         elif self.state == STATE_GAME:
@@ -260,38 +284,96 @@ class GameWindow(arcade.Window):
         # 1. Монетки на фоне
         self.menu_coins.draw()
 
-        # 2. Текст
-        self.title_text.draw()
+        # 2. Если открыто окно справки
+        if self.showing_help:
+            # Полупрозрачный фон затемнения
+            arcade.draw_lrbt_rectangle_filled(0, screen_width, 0, screen_height, (0, 0, 0, 150))
 
-        # 3. Кнопки
-        mx, my = self.mouse_position
-
-        # Play
-        p_hover = (self.btn_play["x"] - self.btn_play["w"] / 2 < mx < self.btn_play["x"] + self.btn_play["w"] / 2 and
-                   self.btn_play["y"] - self.btn_play["h"] / 2 < my < self.btn_play["y"] + self.btn_play["h"] / 2)
-        p_color = arcade.color.GRAY if p_hover else arcade.color.DARK_GRAY
-        self.btn_play_text.color = arcade.color.WHITE if p_hover else arcade.color.LIGHT_GRAY
-
-        # Exit
-        e_hover = (self.btn_exit["x"] - self.btn_exit["w"] / 2 < mx < self.btn_exit["x"] + self.btn_exit["w"] / 2 and
-                   self.btn_exit["y"] - self.btn_exit["h"] / 2 < my < self.btn_exit["y"] + self.btn_exit["h"] / 2)
-        e_color = arcade.color.GRAY if e_hover else arcade.color.DARK_GRAY
-        self.btn_exit_text.color = arcade.color.WHITE if e_hover else arcade.color.LIGHT_GRAY
-
-        for btn, color in [(self.btn_play, p_color), (self.btn_exit, e_color)]:
+            # Серый прямоугольник окна
             arcade.draw_lrbt_rectangle_filled(
-                btn["x"] - btn["w"] / 2, btn["x"] + btn["w"] / 2,
-                btn["y"] - btn["h"] / 2, btn["y"] + btn["h"] / 2,
-                color
+                self.help_x, self.help_x + self.help_w,
+                self.help_y, self.help_y + self.help_h,
+                arcade.color.DARK_GRAY
             )
+            # Белая рамка
             arcade.draw_lrbt_rectangle_outline(
-                btn["x"] - btn["w"] / 2, btn["x"] + btn["w"] / 2,
-                btn["y"] - btn["h"] / 2, btn["y"] + btn["h"] / 2,
-                arcade.color.WHITE, 2
+                self.help_x, self.help_x + self.help_w,
+                self.help_y, self.help_y + self.help_h,
+                arcade.color.WHITE, 4
             )
 
-        self.btn_play_text.draw()
-        self.btn_exit_text.draw()
+            # Текст примера
+            help_text = arcade.Text(
+                "текст для примера",
+                screen_width // 2, screen_height // 2,
+                arcade.color.WHITE,
+                font_size=int(24 * scale_factor),
+                font_name=self.menu_font,
+                anchor_x="center", anchor_y="center", multiline=True,
+                width=self.help_w - 40
+            )
+            help_text.draw()
+
+            # Крестик закрытия
+            close_btn_size = self.close_btn_size
+            close_left = self.help_x + self.help_w - close_btn_size
+            close_right = self.help_x + self.help_w
+            close_bottom = self.help_y + self.help_h - close_btn_size
+            close_top = self.help_y + self.help_h
+
+            arcade.draw_lrbt_rectangle_filled(
+                close_left, close_right, close_bottom, close_top,
+                arcade.color.RED
+            )
+            arcade.draw_text("X", (close_left + close_right) / 2, (close_bottom + close_top) / 2,
+                             arcade.color.WHITE,
+                             font_size=int(20 * scale_factor),
+                             anchor_x="center", anchor_y="center")
+
+        else:
+            # Если окно закрыто - рисуем обычное меню
+            self.title_text.draw()
+
+            mx, my = self.mouse_position
+
+            # Проверки наведения для кнопок
+            p_hover = (self.btn_play["x"] - self.btn_play["w"] / 2 < mx < self.btn_play["x"] + self.btn_play[
+                "w"] / 2 and
+                       self.btn_play["y"] - self.btn_play["h"] / 2 < my < self.btn_play["y"] + self.btn_play[
+                           "h"] / 2)
+
+            h_hover = (self.btn_help["x"] - self.btn_help["w"] / 2 < mx < self.btn_help["x"] + self.btn_help[
+                "w"] / 2 and
+                       self.btn_help["y"] - self.btn_help["h"] / 2 < my < self.btn_help["y"] + self.btn_help[
+                           "h"] / 2)
+
+            e_hover = (self.btn_exit["x"] - self.btn_exit["w"] / 2 < mx < self.btn_exit["x"] + self.btn_exit[
+                "w"] / 2 and
+                       self.btn_exit["y"] - self.btn_exit["h"] / 2 < my < self.btn_exit["y"] + self.btn_exit[
+                           "h"] / 2)
+
+            # Список кнопок (Теперь включает Help)
+            btns = [
+                (self.btn_play, p_hover, self.btn_play_text),
+                (self.btn_help, h_hover, self.btn_help_text),
+                (self.btn_exit, e_hover, self.btn_exit_text)
+            ]
+
+            for btn, hover, text_obj in btns:
+                color = arcade.color.GRAY if hover else arcade.color.DARK_GRAY
+                text_obj.color = arcade.color.WHITE if hover else arcade.color.LIGHT_GRAY
+
+                arcade.draw_lrbt_rectangle_filled(
+                    btn["x"] - btn["w"] / 2, btn["x"] + btn["w"] / 2,
+                    btn["y"] - btn["h"] / 2, btn["y"] + btn["h"] / 2,
+                    color
+                )
+                arcade.draw_lrbt_rectangle_outline(
+                    btn["x"] - btn["w"] / 2, btn["x"] + btn["w"] / 2,
+                    btn["y"] - btn["h"] / 2, btn["y"] + btn["h"] / 2,
+                    arcade.color.WHITE, 2
+                )
+                text_obj.draw()
 
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
         self.mouse_position = (x, y)
@@ -300,8 +382,21 @@ class GameWindow(arcade.Window):
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int) -> None:
         if self.state == STATE_MENU and button == arcade.MOUSE_BUTTON_LEFT:
+            # Если открыто окно справки - проверяем нажатие на крестик
+            if self.showing_help:
+                close_x = self.help_x + self.help_w - self.close_btn_size
+                close_y = self.help_y + self.help_h - self.close_btn_size
+                half = self.close_btn_size / 2
+
+                if (close_x - half < x < close_x + half) and (close_y - half < y < close_y + half):
+                    self.showing_help = False
+                return
+
+            # Если окно закрыто - проверяем кнопки меню
             if self._is_hover(self.btn_play, x, y):
                 self.start_game()
+            elif self._is_hover(self.btn_help, x, y):
+                self.showing_help = True
             elif self._is_hover(self.btn_exit, x, y):
                 arcade.close_window()
             return

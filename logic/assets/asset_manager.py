@@ -25,6 +25,7 @@ class AssetManager:
         self.beetle_sprites: list[arcade.Texture] = []
         self.meteor_textures: list[arcade.Texture] = []
         self.explosion_textures: list[arcade.Texture] = []
+        self.tornado_textures: list[arcade.Texture] = []
         self.crater_texture: arcade.Texture = None
 
     def load_all(self) -> None:
@@ -33,7 +34,7 @@ class AssetManager:
         self._load_coin_type("silver_coin", self.silver_coin_sprites, arcade.color.LIGHT_GRAY)
         self._load_coin_type("gold_coin", self.gold_coin_sprites, arcade.color.GOLD)
         self._load_meteor_stuff()
-
+        self._load_tornado_stuff()
         self._load_wisp_sprites()  # <--- Загрузка виспа
         self._load_beetle_sprites()
         self._loaded = True
@@ -239,3 +240,15 @@ class AssetManager:
             print(f"  -> Loaded {len(self.explosion_textures)} Explosion sprites from {explosion_dir}")
         else:
             print(f"  -> WARNING: Explosion folder not found at {explosion_dir}")
+
+    def _load_tornado_stuff(self):
+        # Загрузка спрайтов Торнадо
+        tornado_dir = os.path.join(self.base_dir, "sprites", "tornado")
+        if os.path.exists(tornado_dir):
+            files = sorted(os.listdir(tornado_dir))
+            for f in files:
+                if f.lower().endswith(".png"):
+                    self.tornado_textures.append(arcade.load_texture(os.path.join(tornado_dir, f)))
+            print(f"  -> Loaded {len(self.tornado_textures)} Tornado sprites")
+        else:
+            print(f"  -> WARNING: Tornado folder not found at {tornado_dir}")

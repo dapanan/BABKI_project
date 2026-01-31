@@ -15,6 +15,7 @@ from logic.world.map_activities.beetle import Beetle
 from logic.world.map_activities.crater import Crater
 from logic.world.map_activities.meteor import Meteor
 from logic.world.map_activities.explosion import Explosion
+from logic.world.map_activities.tornado import Tornado
 
 
 class GameController:
@@ -27,6 +28,18 @@ class GameController:
         self.coins = []
         self.particles = []
 
+        # --- ТОРНАДО ---
+        self.tornado = None
+        self.tornado_respawn_timer = 0.0
+        self.tornado_next_spawn_time = 0.0
+        self.tornado_unlocked = False
+        self.tornado_cooldown_level = 0
+        self.tornado_base_cooldown = 60.0
+        self.width = world_width
+        self.height = world_height
+        self.scale_factor = scale_factor
+        self.tornado_list = arcade.SpriteList()
+
         # --- МЕТЕОРИТ ---
         self.meteor = None
         self.crater = None
@@ -34,20 +47,15 @@ class GameController:
 
         self.meteor_respawn_timer = 0.0
         self.meteor_next_spawn_time = 0.0
-
-        # Первый спавн через рандомное время (например, 10-60 сек для теста, потом поменяешь на 300-420)
         self.meteor_next_spawn_time = random.uniform(10.0, 60.0)
 
         # --- НАСТРОЙКИ МЕТЕОРИТА ---
-        self.meteor_blast_radius = 400.0 # Радиус разлета монет
-        self.meteor_volume = 0.4        # Громкость взрыва (0.0 - 1.0)
+        self.meteor_blast_radius = 400.0
+        self.meteor_volume = 0.4
         self.meteor_trail_timer = 0.0
+        self.meteor_unlocked = False
+        self.meteor_cooldown_level = 0
 
-        # --- МЕТЕОРИТ (Апгрейды) ---
-        self.meteor_unlocked = False       # Куплен ли спавнер?
-        self.meteor_cooldown_level = 0      # Уровень улучшения кулдауна
-
-        # Адаптация под монитор
         self.width = world_width
         self.height = world_height
         self.scale_factor = scale_factor
@@ -57,8 +65,8 @@ class GameController:
         self.gold_coin_level = 0
 
         self.silver_crit_level = 1
-        self.auto_flip_level = 0  # Уровень авто-переворота (0 = выкл)
-        self.auto_flip_timer = 0.0  # Таймер авто-переворота
+        self.auto_flip_level = 0
+        self.auto_flip_timer = 0.0
 
         self.bronze_value_level = 0
         self.silver_value_level = 0
@@ -86,12 +94,12 @@ class GameController:
             "upgrade_zone_5_size": 5000,
             "upgrade_zone_2_mult": 3000,
             "upgrade_zone_5_mult": 7000,
-            # Новые общие апгрейды
+            "spawn_tornado": 15000,
+            "tornado_cooldown_upgrade": 2000,
             "auto_flip_upgrade": 500,
             "bronze_value_upgrade": 2000,
             "silver_value_upgrade": 5000,
             "gold_value_upgrade": 10000,
-            # АПГРЕЙДЫ МЕТЕОРИТА (ОТСЮДА ИЗМЕНИ)
             "spawn_meteor": 15000,
             "meteor_cooldown_upgrade": 2000
         }
@@ -115,12 +123,9 @@ class GameController:
         self.mouse_velocity_history = []
         self.max_history_frames = 8
 
-        # === ИЗМЕНЕНИЯ ДЛЯ МЕНЮ ===
         self.start_coin_x = world_width * 0.25
         self.start_coin_y = world_height * 0.5
-        # ===========================
 
-        # Инициализируем переменные жука
         self.beetle = None
         self.beetle_respawn_timer = 0.0
         self.beetle_respawn_interval = 0.0
@@ -129,27 +134,29 @@ class GameController:
         if not self.load_game():
             self.spawn_coin("bronze")
 
+        # Инициализация Spatial Hash для оптимизации коллизий
+        self.spatial_hash = arcade.SpatialHash(cell_size=150)
+
     def spawn_coin(self, coin_type: str, x: float = None, y: float = None):
-        # === НОВАЯ ЛОГИКА КООРДИНАТ ===
-        # Если координаты не переданы, используем рандом (стандартное поведение)
         if x is None or y is None:
             w = self.width
             h = self.height
             margin = 100 * self.scale_factor
             x = random.randint(int(margin), int(w - margin))
             y = random.randint(int(margin), int(h - margin))
-        # Если передали x и y (например, при старте из меню), используем их
-        # ===============================
 
         if coin_type == "bronze":
-            coin = BronzeCoin(x, y, self.assets.bronze_coin_sprites, scale=0.8 * self.scale_factor)
+            coin = BronzeCoin(x, y, self.assets.bronze_coin_sprites, scale=0.8 * self.scale_factor,
+                              scale_factor=self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "silver":
             crit_chance = 0.1 * self.silver_crit_level
-            coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance, scale=1.1 * self.scale_factor)
+            coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance, scale=1.1 * self.scale_factor,
+                              scale_factor=self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "gold":
-            coin = GoldCoin(x, y, self.assets.gold_coin_sprites, scale=1.5 * self.scale_factor)
+            coin = GoldCoin(x, y, self.assets.gold_coin_sprites, scale=1.5 * self.scale_factor,
+                            scale_factor=self.scale_factor)
             self.has_gold_coin = True
             if self.gold_explosion_unlocked:
                 coin.explosion_chance = 0.5
@@ -171,11 +178,8 @@ class GameController:
         height = self.height
 
         # === ЛОГИКА АВТО-ПЕРЕВОРОТА ===
-        # Работает только если уровень >= 1
         if self.auto_flip_level >= 1:
             self.auto_flip_timer += dt
-
-            # Интервал = 5 - (ур. - 1) * 0.2
             flip_interval = 5.0 - (self.auto_flip_level - 1) * 0.2
             if flip_interval < 0.5: flip_interval = 0.5
 
@@ -192,23 +196,48 @@ class GameController:
                     self.sound_manager.play_toss(c_type)
         # =================================
 
-        # === ЛОГИКА ЖУКА (НОВАЯ ИСПРАВЛЕННАЯ) ===
-        if self.beetle:
-            # Если жук есть, обновляем его
-            is_alive = self.beetle.update(dt, width, height)
+        # === ЛОГИКА ТОРНАДО ===
+        if self.tornado_unlocked:
+            if self.tornado:
+                is_alive = self.tornado.update(dt)
 
-            # Если update вернул False, значит жук умер
+                # === ВАЖНО: ТОРНАДО ПРИМЕНЯЕТСЯ ДО ОБНОВЛЕНИЯ МОНЕТОК ===
+                # Это нужно для мгновенной реакции и корректной обработки выхода
+                for coin in self.coins:
+                    self.tornado.affect_coin(coin, dt)
+                # ==========================================================
+
+                if not is_alive:
+                    self.tornado = None
+                    self.tornado_list.clear()
+
+                    for coin in self.coins:
+                        coin.tornado_hit = False
+                        # Если монетка летела - она должна уже упасть в affect_coin
+                        # Но на всякий случай проверяем
+                        if coin.is_moving:
+                            coin.land()
+
+                    cd = self.tornado_base_cooldown - (self.tornado_cooldown_level * 5.0)
+                    if cd < 10.0: cd = 10.0
+                    self.tornado_respawn_timer = 0.0
+                    self.tornado_next_spawn_time = cd
+            else:
+                self.tornado_respawn_timer += dt
+                if self.tornado_respawn_timer >= self.tornado_next_spawn_time:
+                    self.spawn_tornado()
+                    self.tornado_respawn_timer = 0.0
+        # =======================
+
+        # === ЛОГИКА ЖУКА ===
+        if self.beetle:
+            is_alive = self.beetle.update(dt, width, height)
             if is_alive is False:
                 self.beetle = None
-                # Запускаем таймер на 3-5 минут (180 - 300 секунд)
                 self.beetle_respawn_interval = random.uniform(180.0, 300.0)
                 self.beetle_respawn_timer = 0.0
-                print(f"DEBUG: Beetle died. Next in {self.beetle_respawn_interval:.1f}s")
         else:
-            # Если жука нет, тикаем таймер
             self.beetle_respawn_timer += dt
-
-            # Если время пришло -> спавним
             if self.beetle_respawn_timer >= self.beetle_respawn_interval:
                 self.spawn_beetle()
         # ===========================================
@@ -225,68 +254,47 @@ class GameController:
                 hit_ground = self.meteor.center_y <= self.meteor.target_y
 
                 if hit_ground:
-                    # Метеорит долетел
                     impact_x = self.meteor.center_x
                     impact_y = self.meteor.center_y
 
-                    # --- ЗВУК ---
                     if self.sound_manager.boom_sound:
                         arcade.play_sound(self.sound_manager.boom_sound, volume=self.meteor_volume)
 
-                    # --- ВИЗУАЛ ВЗРЫВА ---
                     if self.assets.explosion_textures:
                         expl = Explosion(impact_x, impact_y, self.assets.explosion_textures)
                         self.explosions.append(expl)
 
-                    # --- ЧАСТИЦЫ ---
                     self.create_explosion_particles(impact_x, impact_y)
 
-                    # === СОЗДАНИЕ И НАСТРОЙКА КРАТЕРА (В ТОЛЬКО ЗДЕСЬ!) ===
                     self.crater = Crater(impact_x, impact_y, self.assets.crater_texture)
-
-                    # Устанавливаем множитель
                     self.crater.multiplier = 10.0
-
-                    # ВАЖНО: Устанавливаем масштаб, чтобы зона была большой
                     self.crater.scale = 1.5
-                    # ========================================================
 
-                    # --- ФИЗИКА РАЗЛЕТА ---
                     for coin in self.coins:
-                        # Вектор ОТ взрыва К монетке
                         dx = impact_x - coin.sprite.center_x
                         dy = impact_y - coin.sprite.center_y
                         dist_sq = dx * dx + dy * dy
-
                         if dist_sq < (self.meteor_blast_radius * self.meteor_blast_radius):
                             coin.hit(dx, dy)
 
                     self.meteor = None
 
-            # --- УПРАВЛЕНИЕ ЖИЗНЬЮ КРАТЕРА ---
             if self.crater:
                 is_alive = self.crater.update(dt)
                 if not is_alive:
                     self.crater = None
-                    # РАСЧЕТ КД С УЧЕТОМ АПГРЕЙДА
-                    # База: 300-420 сек. Каждый уровень уменьшает максимум на 30 сек.
                     max_cd = 2 - (self.meteor_cooldown_level * 30.0)
-
                     self.meteor_respawn_timer = 0.0
                     self.meteor_next_spawn_time = random.uniform(1, max_cd)
-                    print(f"DEBUG: Crater gone. Next meteor in {self.meteor_next_spawn_time:.1f}s")
             else:
-                # Если кратера нет, ждем
                 self.meteor_respawn_timer += dt
                 if self.meteor_respawn_timer >= self.meteor_next_spawn_time:
                     self.spawn_meteor()
                     self.meteor_respawn_timer = 0.0
 
-            # --- ДЫМ ---
             if spawn_smoke and self.meteor:
                 self.create_particles(self.meteor.center_x, self.meteor.center_y, (100, 100, 100, 150))
 
-            # --- ОБНОВЛЕНИЕ ВЗРЫВОВ ---
             for expl in self.explosions:
                 expl.update(dt)
             self.explosions = [e for e in self.explosions if e.alive]
@@ -298,25 +306,36 @@ class GameController:
             self.grabbed_coin.vx = 0
             self.grabbed_coin.vy = 0
 
+        # === ОПТИМИЗАЦИЯ: Spatial Hash ===
+        # Пересоздаем хеш каждый кадр (так как монеты двигаются)
+        self.spatial_hash = arcade.SpatialHash(cell_size=150)
+        for coin in self.coins:
+            self.spatial_hash.add(coin.sprite)
+
+        # Обновление монеток (физика, анимации)
         for coin in self.coins:
             if coin is self.grabbed_coin: continue
 
-            coin.update(dt, width, height, self.coins)
+            # ИСПРАВЛЕНИЕ: Используем правильный метод get_objects_near_point
+            nearby_sprites = self.spatial_hash.get_sprites_near_point((coin.sprite.center_x, coin.sprite.center_y))
+
+            # Преобразуем спрайты обратно в объекты Coin
+            nearby_coins = []
+            for spr in nearby_sprites:
+                if hasattr(spr, 'coin') and spr.coin is not coin:
+                    nearby_coins.append(spr.coin)
+
+            # Передаем в update только соседей
+            coin.update(dt, width, height, nearby_coins)
 
             outcome = coin.check_land_event()
             if outcome > 0:
-                # === ЛОГИКА ЗОН МНОЖИТЕЛЯ ===
                 total_multiplier = 1.0
-
-                # Обычные зоны (x2, x5)
                 for zone in self.zones:
                     if zone.check_collision(coin):
                         total_multiplier *= zone.multiplier
-
-                # КРАТЕР (x20) - ДОБАВЛЕНО
                 if self.crater and self.crater.check_collision(coin):
                     total_multiplier *= self.crater.multiplier
-                # =========================
 
                 final_value = int(outcome * total_multiplier)
                 self.balance.add(final_value)
@@ -342,20 +361,13 @@ class GameController:
         if self.wisp:
             self.wisp.update(dt, width, height, self.coins, self.grabbed_coin)
 
-        # === ОБНОВЛЕНИЕ ЗОН ===
         for zone in self.zones:
             zone.update(dt, width, height)
-        # =======================
 
-        # === ОБНОВЛЕНИЕ ВЗРЫВОВ ===
-        # Обновляем каждый взрыв вручную (чтобы проверить флаг alive)
         for expl in self.explosions:
             expl.update(dt)
 
-        # Фильтруем список: оставляем только те, у которых alive = True
-        # Это удалит взрывы, у которых отыгралась анимация до конца
         self.explosions = [e for e in self.explosions if e.alive]
-        # =======================================
 
         for p in self.particles:
             decay_speed = p.get('decay_speed', 1.0)
@@ -373,42 +385,36 @@ class GameController:
         self.ui.update_grab_state(self.has_gold_coin, self.grab_purchased)
         self.ui.update_explosion_state(self.gold_explosion_unlocked)
         self.ui.update_wisp_state(self.wisp is not None)
-        # Обновляем флаги зон для UI
         self.ui.update_zone_state(
             has_zone_2=(self.zone_2 is not None),
             has_zone_5=(self.zone_5 is not None)
         )
 
     def draw(self) -> None:
-        # 1. Зоны
         for zone in self.zones:
             zone.draw()
 
-        # 2. Жук (если есть)
         if self.beetle:
             self.beetle.draw()
 
-        # 3. КРАТЕР (если есть) - рисуем его вниз, чтобы монетки падали "в него"
         if self.crater:
             self.crater.draw()
 
-        # 4. Монетки
         for coin in self.coins:
             if not coin.is_moving: coin.draw()
         for coin in self.coins:
             if coin.is_moving: coin.draw()
 
-        # 5. Висп
         self.wisp_list.draw()
 
-        # 6. Взрывы
         for expl in self.explosions:
             expl.draw()
-        # 7. МЕТЕОРИТ (рисуем поверх всего, чтобы он падал сверху)
+
+        self.tornado_list.draw()
+
         if self.meteor:
             self.meteor.draw()
 
-        # 8. Частицы
         for p in self.particles:
             alpha = int(255 * (p['life'] / 1.0))
             current_color = (p['color'][0], p['color'][1], p['color'][2], alpha)
@@ -417,10 +423,11 @@ class GameController:
     def on_mouse_press(self, x: int, y: int, button: int) -> None:
         if button == arcade.MOUSE_BUTTON_LEFT:
             if x < self.width:
-                # 1. Проверяем монетки
                 clicked_coin = False
                 for coin in self.coins:
+                    # === ИСПРАВЛЕНИЕ: ПУНКТ 6 - НЕЛЬЗЯ НАЖАТЬ НА ЛЕТЯЩИЕ ===
                     if not coin.is_moving and coin is not self.grabbed_coin:
+                        # ========================================================
                         dx = x - coin.sprite.center_x
                         dy = y - coin.sprite.center_y
                         if dx * dx + dy * dy < (coin.radius * coin.radius):
@@ -430,12 +437,9 @@ class GameController:
                             clicked_coin = True
                             break
 
-                # 2. Если монетка не была нажата, проверяем ЖУКА
                 if not clicked_coin and self.beetle and self.beetle.can_be_clicked:
                     dx = x - self.beetle.center_x
                     dy = y - self.beetle.center_y
-                    # Используем половину ширины спрайта как радиус клика для простоты
-                    # или beetle.width / 2
                     hit_radius = self.beetle.width / 2
                     if dx * dx + dy * dy < (hit_radius * hit_radius):
                         self.kill_beetle()
@@ -444,7 +448,8 @@ class GameController:
         self.mouse_x = x
         self.mouse_y = y
         self.mouse_velocity_history.append((dx, dy))
-        if len(self.mouse_velocity_history) > self.max_history_frames: self.mouse_velocity_history.pop(0)
+        if len(self.mouse_velocity_history) > self.max_history_frames:
+            self.mouse_velocity_history.pop(0)
 
     def on_mouse_press_rmb(self, x: int, y: int) -> None:
         if not self.grab_purchased: return
@@ -459,6 +464,7 @@ class GameController:
                     coin.vy = 0
                     coin.anim = []
                     coin.fixed_outcome_texture = coin.sprite.texture
+                    # УБРАНО manual_override
                     self.mouse_x = x
                     self.mouse_y = y
                     self.mouse_velocity_history = []
@@ -477,14 +483,22 @@ class GameController:
             avg_dx = total_dx / count
             avg_dy = total_dy / count
         move_threshold = 2.0
+
         if abs(avg_dx) < move_threshold and abs(avg_dy) < move_threshold:
             coin.vx = 0
             coin.vy = 0
             coin.anim = []
         else:
-            throw_multiplier = 175.0
+            # ИСПРАВЛЕНИЕ: Бросок зависит от масштаба экрана
+            throw_multiplier = 175.0 * self.scale_factor
+
             coin.vx = avg_dx * throw_multiplier
             coin.vy = avg_dy * throw_multiplier
+
+            coin._select_flying_animation()
+            coin.anim_index = 0
+            if coin.anim:
+                coin.sprite.texture = self.anim[0]
 
     def create_particles(self, cx, cy, color=(255, 215, 0, 255), coin=None):
         for _ in range(30):
@@ -523,7 +537,6 @@ class GameController:
             self.balance.spend(cost)
             success = True
 
-            # === ПОКУПКА МОНЕТОК ===
             if upgrade_id == "buy_bronze_coin":
                 self.spawn_coin("bronze")
                 self.bronze_coin_level += 1
@@ -545,7 +558,6 @@ class GameController:
                 self.upgrade_prices[upgrade_id] = new_price
                 self.ui.update_button(upgrade_id, new_price, level=self.gold_coin_level)
 
-            # === ОДНОРАЗОВЫЕ АПГРЕЙДЫ ===
             elif upgrade_id == "silver_crit_upgrade":
                 self.silver_crit_level += 1
                 new_price = math.ceil(cost * 2.718)
@@ -562,10 +574,10 @@ class GameController:
                     if isinstance(coin, GoldCoin): coin.explosion_chance = 0.5
                 self.ui.mark_purchased(upgrade_id)
 
-            # === ВИСП ===
             elif upgrade_id == "wisp_spawn":
                 if not self.wisp:
-                    self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=0.33)
+                    self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites,
+                                     speed=100 * self.scale_factor, scale=0.33, scale_factor=self.scale_factor)
                     self.wisp_list.append(self.wisp)
                     self.ui.mark_purchased(upgrade_id)
                 else:
@@ -591,7 +603,6 @@ class GameController:
                 else:
                     success = False
 
-            # === ОБЩИЕ АПГРЕЙДЫ ===
             elif upgrade_id == "auto_flip_upgrade":
                 self.auto_flip_level += 1
                 new_price = math.ceil(cost * 2.718)
@@ -625,7 +636,6 @@ class GameController:
                         coin.value *= 2
                 self.ui.update_button(upgrade_id, new_price, level=self.gold_value_level)
 
-            # === АПГРЕЙДЫ ЗОН ===
             elif upgrade_id == "spawn_zone_2":
                 if self.zone_2 is None:
                     z2 = MultiplyZone(self.width, self.height, 2.0, (100, 255, 100, 100))
@@ -686,10 +696,23 @@ class GameController:
                 else:
                     success = False
 
-            # === АПГРЕЙДЫ МЕТЕОРИТА ===
+            elif upgrade_id == "spawn_tornado":
+                if not self.tornado_unlocked:
+                    self.tornado_unlocked = True
+                    self.ui.update_tornado_state(True)
+                else:
+                    success = False
+
+            elif upgrade_id == "tornado_cooldown_upgrade":
+                self.tornado_cooldown_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                self.ui.update_button(upgrade_id, new_price, level=self.tornado_cooldown_level)
+
             elif upgrade_id == "spawn_meteor":
                 if not self.meteor_unlocked:
                     self.meteor_unlocked = True
+                    self.ui.update_meteor_state(True)  # <--- ИСПРАВЛЕНИЕ: Обновляем состояние UI
                     self.ui.mark_purchased(upgrade_id)
                 else:
                     success = False
@@ -712,7 +735,6 @@ class GameController:
         return os.path.join(os.getcwd(), "save.json")
 
     def save_game(self) -> None:
-        """Сохраняет состояние игры в файл"""
         data = {
             "balance": self.balance.get(),
             "upgrade_prices": self.upgrade_prices,
@@ -741,7 +763,9 @@ class GameController:
                 "zone_5_mult": self.zone_5_mult_level,
             },
             "meteor_unlocked": self.meteor_unlocked,
-            "meteor_cooldown_level": self.meteor_cooldown_level
+            "meteor_cooldown_level": self.meteor_cooldown_level,
+            "tornado_unlocked": self.tornado_unlocked,
+            "tornado_cooldown_level": self.tornado_cooldown_level
         }
 
         if self.wisp:
@@ -755,7 +779,6 @@ class GameController:
             }
 
         for z in self.zones:
-            # Определяем тип зоны явно, чтобы не путать при загрузке
             z_type = "unknown"
             if z is self.zone_2:
                 z_type = "zone_2"
@@ -797,7 +820,6 @@ class GameController:
             print(f"DEBUG: Error saving game: {e}")
 
     def load_game(self) -> bool:
-        """Загружает состояние игры. Возвращает True если успешно."""
         path = self.get_save_path()
         if not os.path.exists(path):
             print("DEBUG: No save file found.")
@@ -811,19 +833,16 @@ class GameController:
                 print("DEBUG: Save file is empty.")
                 return False
 
-            # 1. Загрузка базовых значений
             self.balance._value = data["balance"]
             self.upgrade_prices = data["upgrade_prices"]
             self.silver_crit_level = data["silver_crit_level"]
             self.auto_flip_level = data.get("auto_flip_level", 0)
 
-            # 2. Загрузка флагов
             flags = data["flags"]
             self.has_gold_coin = flags["has_gold_coin"]
             self.grab_purchased = flags["grab_purchased"]
             self.gold_explosion_unlocked = flags["gold_explosion_unlocked"]
 
-            # 3. Загрузка уровней
             levels_data = data.get("levels", {})
             self.bronze_coin_level = levels_data.get("bronze_coin", 1)
             self.silver_coin_level = levels_data.get("silver_coin", 0)
@@ -838,13 +857,23 @@ class GameController:
             self.zone_5_size_level = levels_data.get("zone_5_size", 0)
             self.zone_5_mult_level = levels_data.get("zone_5_mult", 0)
 
-            # 4. Загрузка метеорита
             self.meteor_unlocked = data.get("meteor_unlocked", False)
             self.meteor_cooldown_level = data.get("meteor_cooldown_level", 0)
+
+            self.tornado_unlocked = data.get("tornado_unlocked", False)
+            self.tornado_cooldown_level = data.get("tornado_cooldown_level", 0)
+
+            if self.tornado_unlocked:
+                self.ui.mark_purchased("spawn_tornado")
+                self.ui.update_tornado_state(True)
+
+            self.ui.update_button("tornado_cooldown_upgrade", self.upgrade_prices["tornado_cooldown_upgrade"],
+                                  level=self.tornado_cooldown_level)
 
             # 5. Загрузка Виспа
             wisp_data = data.get("wisp")
             if wisp_data:
+                self.wisp_list.clear()  # <--- ИСПРАВЛЕНИЕ: Чистим список перед загрузкой виспа
                 self.wisp = Wisp(self.width / 2, self.height / 2, self.assets.wisp_sprites, scale=wisp_data["scale"])
                 self.wisp.speed = wisp_data["speed"]
                 self.wisp.center_x = wisp_data["x"]
@@ -861,7 +890,6 @@ class GameController:
             for z_data in data["zones"]:
                 z_type = z_data.get("type", "unknown")
 
-                # Восстанавливаем зону по типу
                 if z_type == "zone_2":
                     z = MultiplyZone(self.width, self.height, z_data["multiplier"], (100, 255, 100, 100))
                     self.zone_2 = z
@@ -871,7 +899,6 @@ class GameController:
                 else:
                     z = MultiplyZone(self.width, self.height, z_data["multiplier"], (0, 0, 0, 0))
 
-                # Восстанавливаем параметры
                 z.size = z_data["size"]
                 z.width = z.size
                 z.height = z.size
@@ -886,13 +913,15 @@ class GameController:
             for c_data in data["coins"]:
                 c_type = c_data["type"]
                 if c_type == "bronze":
-                    c = BronzeCoin(c_data["x"], c_data["y"], self.assets.bronze_coin_sprites, scale=c_data["scale"])
+                    c = BronzeCoin(c_data["x"], c_data["y"], self.assets.bronze_coin_sprites, scale=c_data["scale"],
+                                   scale_factor=self.scale_factor)
                 elif c_type == "silver":
                     crit_chance = 0.1 * self.silver_crit_level
                     c = SilverCoin(c_data["x"], c_data["y"], self.assets.silver_coin_sprites, crit_chance,
-                                   scale=c_data["scale"])
+                                   scale=c_data["scale"], scale_factor=self.scale_factor)
                 elif c_type == "gold":
-                    c = GoldCoin(c_data["x"], c_data["y"], self.assets.gold_coin_sprites, scale=c_data["scale"])
+                    c = GoldCoin(c_data["x"], c_data["y"], self.assets.gold_coin_sprites, scale=c_data["scale"],
+                                 scale_factor=self.scale_factor)
 
                 c.vx = c_data["vx"]
                 c.vy = c_data["vy"]
@@ -905,7 +934,6 @@ class GameController:
                     c.land()
                 self.coins.append(c)
 
-            # 8. СИНХРОНИЗАЦИЯ UI (Самое главное)
             if self.grab_purchased: self.ui.mark_purchased("grab_upgrade")
             if self.gold_explosion_unlocked: self.ui.mark_purchased("gold_explosion_upgrade")
             if self.wisp: self.ui.mark_purchased("wisp_spawn")
@@ -966,18 +994,15 @@ class GameController:
             return False
 
     def reset_game(self) -> bool:
-        """Сбрасывает игру в начальное состояние"""
         if os.path.exists(self.get_save_path()):
             os.remove(self.get_save_path())
 
-        # 1. Очистка игровых объектов
         self.coins.clear()
         self.particles.clear()
         self.zones.clear()
         self.zone_2 = None
         self.zone_5 = None
 
-        # Очистка жука, виспа и метеорита
         self.beetle = None
         self.wisp = None
         self.wisp_list.clear()
@@ -988,7 +1013,6 @@ class GameController:
         self.meteor_unlocked = False
         self.meteor_cooldown_level = 0
 
-        # 2. Сброс прогресса и цен
         self.balance._value = 0
         self.silver_crit_level = 1
         self.auto_flip_level = 0
@@ -1010,18 +1034,25 @@ class GameController:
         self.grab_purchased = False
         self.gold_explosion_unlocked = False
 
-        # 3. СБРОС UI (Сбрасываем состояние кнопок) - ПЕРЕНЕСЕНО ВВЕРХ
-        # Это критично: сбрасываем is_purchased ДО того, как обновим текст
+        self.tornado = None
+        self.tornado_unlocked = False
+        self.tornado_cooldown_level = 0
+        self.tornado_respawn_timer = 0.0
+        self.tornado_list.clear()
+
         for tab_groups in self.ui.tab_content.values():
             for grp in tab_groups:
                 for b in grp.buttons:
                     b.is_purchased = False
                     self.ui._enabled[b.upgrade_id] = True
 
-        # Обновляем цены кнопок метеорита
         self.ui.update_meteor_state(False)
         self.ui.update_button("spawn_meteor", 15000, level=0)
         self.ui.update_button("meteor_cooldown_upgrade", 2000, level=0)
+
+        self.ui.update_tornado_state(False)
+        self.ui.update_button("spawn_tornado", 15000, level=0)
+        self.ui.update_button("tornado_cooldown_upgrade", 2000, level=0)
 
         self.upgrade_prices = {
             "buy_bronze_coin": 50,
@@ -1044,10 +1075,11 @@ class GameController:
             "silver_value_upgrade": 5000,
             "gold_value_upgrade": 10000,
             "spawn_meteor": 15000,
-            "meteor_cooldown_upgrade": 2000
+            "meteor_cooldown_upgrade": 2000,
+            "spawn_tornado": 15000,
+            "tornado_cooldown_upgrade": 2000
         }
 
-        # Обновляем текст и уровни на кнопках
         self.ui.update_button("buy_bronze_coin", 50, level=1)
         self.ui.update_button("buy_silver_coin", 200, level=0)
         self.ui.update_button("buy_gold_coin", 1000, level=0)
@@ -1073,14 +1105,11 @@ class GameController:
         self.ui.update_button("upgrade_zone_5_size", 5000, level=0)
         self.ui.update_button("upgrade_zone_5_mult", 7000, level=0)
 
-        # Сбрасываем флаги UI
         self.ui.update_grab_state(False, False)
         self.ui.update_explosion_state(False)
         self.ui.update_wisp_state(False)
-        self.ui.update_meteor_state(False)
         self.ui.update_zone_state(False, False)
 
-        # === ИСПРАВЛЕНИЕ БАГА: Спавним стартовую монетку ТОЛЬКО РАЗ в фиксированной позиции ===
         self.spawn_coin("bronze", x=self.start_coin_x, y=self.start_coin_y)
 
         print("DEBUG: Game Reset.")
@@ -1091,39 +1120,29 @@ class GameController:
         x = random.randint(margin, int(self.width - margin))
         y = random.randint(margin, int(self.height - margin))
 
-        self.beetle = Beetle(x, y, self.assets.beetle_sprites)
+        # ИСПРАВЛЕНИЕ: Передаем scale_factor
+        self.beetle = Beetle(x, y, self.assets.beetle_sprites, scale_factor=self.scale_factor)
         print("DEBUG: Beetle spawned!")
 
     def kill_beetle(self) -> None:
-        """Обрабатывает смерть жука: звук, баланс, анимацию"""
         if not self.beetle: return
 
-        # 1. Звук
         if self.sound_manager.beetle_dead_sound:
             arcade.play_sound(self.sound_manager.beetle_dead_sound)
 
-        # 2. Умножение баланса на 1.2
         current_balance = self.balance.get()
         new_balance = int(current_balance * 1.2)
 
-        # Обновляем значение напрямую (так как метод add просто прибавляет)
         self.balance._value = new_balance
         print(f"DEBUG: Beetle killed! Balance {current_balance} -> {new_balance}")
 
-        # 3. Запускаем анимацию смерти жука
         self.beetle.start_death()
 
     def spawn_beetle_initial(self):
-        """Устанавливает время для самого первого появления жука"""
-        # Чтобы жук не появлялся мгновенно при старте, даем ему рандом от 10 до 60 сек
-        # Или ставь random.uniform(0, 300) как раньше. Но для старта лучше маленькое.
         self.beetle_respawn_interval = random.uniform(10.0, 60.0)
         self.beetle_respawn_timer = 0.0
 
     def spawn_meteor(self) -> None:
-        """Спавнит метеорит над случайной точкой, не выходящей за экран"""
-
-        # 1. Получаем реальные размеры спрайта кратера (нужны только для расчета отступов)
         crater_w = self.assets.crater_texture.width
         crater_h = self.assets.crater_texture.height
 
@@ -1144,15 +1163,12 @@ class GameController:
 
         start_y = self.height + 100
 
-        # 2. Создаем ТОЛЬКО метеорит. Кратер не трогаем!
         self.meteor = Meteor(target_x, start_y, target_y, self.assets.meteor_textures)
 
         print(f"DEBUG: Meteor spawned at {target_x:.0f}, {target_y:.0f}")
 
     def create_explosion_particles(self, cx: float, cy: float) -> None:
-        """Создает эффект взрыва из огненных частиц"""
-        for _ in range(50):  # Много частиц
-            # Цвета от желтого до красного
+        for _ in range(50):
             red = 255
             green = random.randint(0, 200)
             color = (red, green, 0, 255)
@@ -1168,6 +1184,33 @@ class GameController:
                 'life': 1.0,
                 'color': color,
                 'size': size,
-                'decay_speed': 2.0  # Быстро гаснут
+                'decay_speed': 2.0
             }
             self.particles.append(particle_data)
+
+    def spawn_tornado(self) -> None:
+        margin = self.width / 4
+
+        min_x = margin
+        max_x = self.width - margin
+
+        min_y = margin
+        max_y = self.height - margin
+
+        target_x = random.uniform(min_x, max_x)
+        target_y = random.uniform(min_y, max_y)
+
+        self.tornado = Tornado(
+            target_x,
+            target_y,
+            self.assets.tornado_textures,
+            self.sound_manager.tornado_sound,
+            scale=2.0 * self.scale_factor,  # Визуальный размер
+            world_scale=self.scale_factor,  # Физический масштаб
+            world_width=self.width
+        )
+
+        self.tornado_list.clear()
+        self.tornado_list.append(self.tornado)
+
+        print(f"DEBUG: Tornado spawned at {target_x:.0f}, {target_y:.0f}")

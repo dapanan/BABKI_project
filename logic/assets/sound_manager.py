@@ -26,6 +26,7 @@ class SoundManager:
         self._last_gold_land = None
         self.beetle_dead_sound = None
         self.boom_sound = None
+        self.tornado_sound = None
 
     def load_all(self) -> None:
         base_sound_dir = "view/sounds"
@@ -93,6 +94,14 @@ class SoundManager:
             print("  -> Loaded Boom sound")
         else:
             print("  -> WARNING: Boom sound not found at view/sounds/boom/boom.mp3")
+
+        print("--- Loading Tornado Sound ---")
+        tornado_path = os.path.join(base_sound_dir, "tornado", "tornado.mp3")
+        if os.path.exists(tornado_path):
+            self.tornado_sound = arcade.load_sound(tornado_path)
+            print("  -> Loaded Tornado sound")
+        else:
+            print("  -> WARNING: Tornado sound not found")
 
     def _load_sounds_from_dir(self, directory_paths: list[str], target_list: list, label: str) -> None:
         """Ищет звуки в первой доступной папке из списка directory_paths"""
