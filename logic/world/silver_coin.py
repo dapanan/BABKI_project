@@ -20,7 +20,7 @@ class SilverCoin(Coin):
             scale=scale,
             scale_factor=scale_factor  # <--- Передали в родительский класс
         )
-        self.crit_chance = 1.0  # Заглушка
+        self.crit_chance = 0.05  # Заглушка
         self.is_crit = False
 
     def land(self) -> None:

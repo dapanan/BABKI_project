@@ -162,8 +162,8 @@ class Coin:
 
             # === ОБЫЧНАЯ ЗЕМЛЯ ===
             else:
-                self.vx *= 0.9
-                self.vy *= 0.9
+                self.vx *= 0.93
+                self.vy *= 0.93
                 if abs(self.vx) < 0.5: self.vx = 0
                 if abs(self.vy) < 0.5: self.vy = 0
 

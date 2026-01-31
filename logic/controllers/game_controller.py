@@ -278,8 +278,9 @@ class GameController:
 
         # === ЛОГИКА МЕТЕОРИТА ===
         if self.meteor_unlocked:
-
             spawn_smoke = False
+
+            # 1. Если метеор летит
             if self.meteor:
                 is_trail = self.meteor.update(dt)
                 if is_trail and self.meteor.center_y > self.meteor.target_y:
@@ -300,10 +301,17 @@ class GameController:
 
                     self.create_explosion_particles(impact_x, impact_y)
 
-                    self.crater = Crater(impact_x, impact_y, self.assets.crater_texture)
-                    self.crater.multiplier = 10.0
-                    self.crater.scale = 1.5
+                    # === СОЗДАНИЕ КРАТЕРА (С ЗАЩИТОЙ) ===
+                    if self.assets.crater_texture:
+                        self.crater = Crater(impact_x, impact_y, self.assets.crater_texture)
+                        self.crater.multiplier = 10.0
+                        self.crater.scale = 1.5
+                    else:
+                        print("WARNING: Crater texture missing!")
+                        self.crater = None  # Явно ставим None, чтобы не было краша
+                    # =====================================
 
+                    # Разбрасываем монеты
                     for coin in self.coins:
                         dx = impact_x - coin.sprite.center_x
                         dy = impact_y - coin.sprite.center_y
@@ -313,26 +321,31 @@ class GameController:
 
                     self.meteor = None
 
-            if self.crater:
+            # 2. Если кратер существует (Ждем, пока он исчезнет)
+            elif self.crater:
                 is_alive = self.crater.update(dt)
                 if not is_alive:
                     self.crater = None
+
+                    # Кратер исчез -> Сбрасываем таймер и ставим время следующего спавна
                     max_cd = 2 - (self.meteor_cooldown_level * 30.0)
                     self.meteor_respawn_timer = 0.0
                     self.meteor_next_spawn_time = random.uniform(1, max_cd)
+
+            # 3. Если ничего нет (Ждем таймер спавна)
             else:
                 self.meteor_respawn_timer += dt
                 if self.meteor_respawn_timer >= self.meteor_next_spawn_time:
                     self.spawn_meteor()
-                    self.meteor_respawn_timer = 0.0
+                    self.meteor_respawn_timer = 0.0  # Сбрасываем после спавна
 
+            # Генерация дыма
             if spawn_smoke and self.meteor:
                 self.create_particles(self.meteor.center_x, self.meteor.center_y, (100, 100, 100, 150))
 
             for expl in self.explosions:
                 expl.update(dt)
             self.explosions = [e for e in self.explosions if e.alive]
-        # ========================================
 
         if self.grabbed_coin:
             self.grabbed_coin.sprite.center_x = self.mouse_x
@@ -1385,3 +1398,29 @@ class GameController:
                 counts["gold"] += 1
         return counts
 
+    def create_fusion_flash(self, cx: float, cy: float, fusion_type: str) -> None:
+        """Эффект яркой вспышки при слиянии монет"""
+        # Выбираем цвет вспышки
+        if fusion_type == "silver":
+            color = (200, 240, 255, 255)  # Ярко-голубой / белый
+        elif fusion_type == "gold":
+            color = (255, 215, 0, 255)     # Ярко-золотой
+        else:
+            color = (255, 255, 255, 255)
+
+        # Создаем 50 быстрых частиц, разлетающихся от центра
+        for _ in range(50):
+            angle = random.uniform(0, 6.28)
+            speed = random.uniform(400, 800)  # Высокая скорость для эффекта взрыва
+            size = random.uniform(4, 10)
+
+            particle_data = {
+                'x': cx, 'y': cy,
+                'vx': math.cos(angle) * speed,
+                'vy': math.sin(angle) * speed,
+                'life': 1,
+                'color': color,
+                'size': size,
+                'decay_speed': 2.5
+            }
+            self.particles.append(particle_data)
