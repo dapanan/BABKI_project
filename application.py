@@ -35,6 +35,7 @@ class GameWindow(arcade.Window):
         self.show_view(self.game_view)
 
         arcade.set_background_color(arcade.color.WHITE)
+        self.music = Music(self.settings)
 
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()

@@ -1,7 +1,7 @@
 import pyglet
 import os
 import random
-
+import settings
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MUSIC_FOLDER = os.path.join(BASE_DIR, "music")
 
@@ -14,7 +14,9 @@ class Music:
             if f.lower().endswith((".mp3", ".wav", ".ogg"))
         ]
 
-
+        self.settings = settings
+        self.player = pyglet.media.Player()
+        self.player.volume = self.settings.music_volume
         self.player = pyglet.media.Player()
 
     def play_next_song(self):
