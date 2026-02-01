@@ -8,6 +8,7 @@ from logic.view.music_engine import Music
 from logic.controllers.ui_controller import SettingsMenu
 from Settings_View import SettingsView
 from settings import Settings
+from logic.view.game_view import GameView
 
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
@@ -16,13 +17,23 @@ PANEL_WIDTH = 500
 
 
 class GameWindow(arcade.Window):
-    def __init__(self) -> None:
+    def __init__(self, asser_manager, sound_manager):
         super().__init__(
             SCREEN_WIDTH,
             SCREEN_HEIGHT,
             SCREEN_TITLE,
             update_rate=1 / 60,
         )
+        self.settings = Settings()
+        self.music = Music(self.settings)
+        self.music.set_volume(self.settings.music_volume)
+
+        self.settings.save()
+
+        self.game_view = GameView(asser_manager, sound_manager)
+        self.settings_view = SettingsView(self.settings, self.music)
+
+        self.show_view(self.game_view)
 
         arcade.set_background_color(arcade.color.WHITE)
 

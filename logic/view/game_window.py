@@ -25,8 +25,10 @@ class GameWindow(arcade.Window):
             SCREEN_HEIGHT,
             SCREEN_TITLE,
             update_rate=1 / 60,
+            
         )
-
+        self.mode = "game"
+        self.music_volume = 0.4
         self.settings_menu = SettingsMenu(
             x=600,
             y=200,
@@ -61,11 +63,16 @@ class GameWindow(arcade.Window):
         self.game.update(delta_time)
         self.ui.update(self.game.balance.get())
 
-    def on_draw(self) -> None:
+    def on_draw(self):
         self.clear()
-        self.game.draw()
-        self.ui.draw(balance_value=self.game.balance.get())
-        self.settings_menu.draw()
+
+        if self.mode == "game":
+            self.game.draw()
+            self.ui.draw(balance_value=self.game.balance.get())
+
+        elif self.mode == "settings":
+            self.draw_settings()
+
 
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int) -> None:
@@ -94,8 +101,40 @@ class GameWindow(arcade.Window):
     
     def on_key_press(self, key, modifiers):
         if key == arcade.key.ESCAPE:
-            self.settings_menu.visible = not self.settings_menu.visible
+            if self.mode == "game":
+                self.mode = "settings"
+            else:
+                self.mode = "game"
+
 
     def on_key_press(self, key, modifiers):
         if key == arcade.key.ESCAPE:
             self.window.show_view(self.window.settings_view)
+
+    def draw_settings(self):
+        arcade.draw_text(
+            "SETTINGS",
+            self.width // 2,
+            self.height - 100,
+            arcade.color.WHITE,
+            40,
+            anchor_x="center"
+    )
+
+        arcade.draw_text(
+            f"Music volume: {int(self.music_volume * 100)}%",
+            self.width // 2,
+            self.height // 2,
+            arcade.color.WHITE,
+            24,
+            anchor_x="center"
+    )
+
+        arcade.draw_text(
+            "ESC — back",
+            self.width // 2,
+            100,
+            arcade.color.GRAY,
+            20,
+            anchor_x="center"
+    )

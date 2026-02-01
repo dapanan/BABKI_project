@@ -29,8 +29,8 @@ class Music:
             self.play_next_song()
 
     def set_volume(self, volume: float):
-        volume = max(0.0, min(1.0, volume))
-        self.player.volume = volume
+        self.player.volume = max(0.0, min(1.0, volume))
+
 
     def get_volume(self):
         return self.player.volume
