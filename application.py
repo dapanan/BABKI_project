@@ -25,7 +25,6 @@ class GameWindow(arcade.Window):
             update_rate=1 / 60,
         )
         self.settings = Settings()
-        self.music = Music(self.settings)
         self.music.set_volume(self.settings.music_volume)
 
         self.settings.save()

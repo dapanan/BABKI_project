@@ -27,10 +27,8 @@ class GameWindow(arcade.Window):
             update_rate=1 / 60,
 
         )
-        if asset_manager is None:
-            asset_manager = AssetManager()
-            asset_manager.load_all()
-            
+
+
         self.mode = "game"
         self.music_volume = 0.4
         self.settings_menu = SettingsMenu(
@@ -45,7 +43,6 @@ class GameWindow(arcade.Window):
         self.asset_manager = asset_manager
         self.sound_manager = sound_manager
 
-        # игровое поле (без UI)
         self.world_width = SCREEN_WIDTH - PANEL_WIDTH
         self.world_height = SCREEN_HEIGHT
 
