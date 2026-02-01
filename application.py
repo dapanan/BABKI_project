@@ -17,49 +17,32 @@ PANEL_WIDTH = 500
 
 
 class GameWindow(arcade.Window):
-    def __init__(self, asser_manager, sound_manager):
-        super().__init__(
-            SCREEN_WIDTH,
-            SCREEN_HEIGHT,
-            SCREEN_TITLE,
-            update_rate=1 / 60,
-        )
+    def __init__(self):
+        super().__init__(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE, update_rate=1/60)
+        arcade.set_background_color(arcade.color.AMAZON)
+
+
         self.settings = Settings()
-        self.music.set_volume(self.settings.music_volume)
-
-        self.settings.save()
-
-        self.game_view = GameView(asser_manager, sound_manager)
-        self.settings_view = SettingsView(self.settings, self.music)
-
-        self.show_view(self.game_view)
-
-        arcade.set_background_color(arcade.color.WHITE)
-        self.music = Music(self.settings)
-
         self.asset_manager = AssetManager()
         self.asset_manager.load_all()
-        self.music_manager = Music()
-        self.music_manager.start()
-
         self.sound_manager = SoundManager()
         self.sound_manager.load_all()
+
+
+        self.music = Music(self.settings)
+        self.music.start()
+
 
         self.world_width = SCREEN_WIDTH - PANEL_WIDTH
         self.world_height = SCREEN_HEIGHT
 
+        self.game = GameController(asset_manager=self.asset_manager)
         self.ui = UIController(
+            asset_manager=self.asset_manager,
             panel_x=self.world_width,
             panel_width=PANEL_WIDTH,
             panel_height=SCREEN_HEIGHT,
         )
-
-        self.game = GameController(
-            asset_manager=self.asset_manager,
-            ui_controller=self.ui,
-            sound_manager=self.sound_manager
-        )
-
     def on_update(self, delta_time: float):
         self.game.update(delta_time)
         self.ui.update(self.game.balance.get())

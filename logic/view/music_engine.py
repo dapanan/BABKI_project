@@ -7,7 +7,7 @@ MUSIC_FOLDER = os.path.join(BASE_DIR, "music")
 
 class Music:
     def __init__(self):
-
+        self.settings = settings
         self.music_list = [
             os.path.join(MUSIC_FOLDER, f)
             for f in os.listdir(MUSIC_FOLDER)
@@ -32,6 +32,8 @@ class Music:
 
     def set_volume(self, volume: float):
         self.player.volume = max(0.0, min(1.0, volume))
+        self.settings.music_volume = self.player.volume
+        self.settings.save()
 
 
     def get_volume(self):
