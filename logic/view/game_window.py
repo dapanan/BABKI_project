@@ -25,8 +25,12 @@ class GameWindow(arcade.Window):
             SCREEN_HEIGHT,
             SCREEN_TITLE,
             update_rate=1 / 60,
-            
+
         )
+        if asset_manager is None:
+            asset_manager = AssetManager()
+            asset_manager.load_all()
+            
         self.mode = "game"
         self.music_volume = 0.4
         self.settings_menu = SettingsMenu(
