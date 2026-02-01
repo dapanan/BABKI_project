@@ -5,8 +5,8 @@ from logic.controllers.game_controller import GameController
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
 from logic.controllers.ui_controller import SettingsMenu
-
-
+from logic.view.music_engine import Music
+import settings
 
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
@@ -27,6 +27,11 @@ class GameWindow(arcade.Window):
             update_rate=1 / 60,
 
         )
+
+        self.settings = settings()
+        self.music = Music(self.settings)
+        self.music.start()
+
 
 
         self.mode = "game"
