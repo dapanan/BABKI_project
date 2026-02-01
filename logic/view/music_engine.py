@@ -28,5 +28,12 @@ class Music:
         def on_eos():
             self.play_next_song()
 
+    def set_volume(self, volume: float):
+        volume = max(0.0, min(1.0, volume))
+        self.player.volume = volume
+
+    def get_volume(self):
+        return self.player.volume
+
     def start(self):
         self.play_next_song()

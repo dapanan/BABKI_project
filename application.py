@@ -4,6 +4,10 @@ from logic.assets.sound_manager import SoundManager
 from logic.controllers.game_controller import GameController
 from logic.controllers.ui_controller import UIController
 from logic.view.music_engine import Music
+from logic.view.music_engine import Music
+from logic.controllers.ui_controller import SettingsMenu
+from logic.view.Settings_View import SettingsView
+from settings import Settings
 
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080

@@ -4,6 +4,9 @@ from logic.controllers.ui_controller import UIController
 from logic.controllers.game_controller import GameController
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
+from logic.controllers.ui_controller import SettingsMenu
+
+
 
 SCREEN_WIDTH = 1920
 SCREEN_HEIGHT = 1080
@@ -24,6 +27,13 @@ class GameWindow(arcade.Window):
             update_rate=1 / 60,
         )
 
+        self.settings_menu = SettingsMenu(
+            x=600,
+            y=200,
+            width=400,
+            height=400,
+            music_manager=self.music_manager
+        )
         arcade.set_background_color(arcade.color.AMAZON)
 
         self.asset_manager = asset_manager
@@ -55,11 +65,17 @@ class GameWindow(arcade.Window):
         self.clear()
         self.game.draw()
         self.ui.draw(balance_value=self.game.balance.get())
+        self.settings_menu.draw()
+
 
     def on_mouse_press(self, x: int, y: int, button: int, modifiers: int) -> None:
         if button != arcade.MOUSE_BUTTON_LEFT:
             return
         self.game.on_mouse_press(x, y)
+        if self.settings_menu.visible:
+            self.settings_menu.on_mouse_press(x, y, button)
+            return
+
 
     def on_mouse_release(self, x: int, y: int, button: int, modifiers: int) -> None:
         if button != arcade.MOUSE_BUTTON_LEFT:
@@ -75,3 +91,11 @@ class GameWindow(arcade.Window):
             return
 
         self.game.try_buy_upgrade(upgrade_id)
+    
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.ESCAPE:
+            self.settings_menu.visible = not self.settings_menu.visible
+
+    def on_key_press(self, key, modifiers):
+        if key == arcade.key.ESCAPE:
+            self.window.show_view(self.window.settings_view)
