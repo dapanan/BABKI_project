@@ -53,10 +53,19 @@ class MultiplyZone:
             bounced = True
 
         # Если был отскок - меняем скорость рандомно
+        # Если был отскок - меняем скорость рандомно
         if bounced:
-            # Выбираем множитель от 0.75 до 1.25 (то есть +/- 25%)
+            # Выбираем множитель от 0.75 до 1.25
             factor = random.uniform(0.75, 1.25)
             self.speed *= factor
+
+            # --- ИСПРАВЛЕНИЕ: Защита от безумной скорости (УБРАН scale_factor) ---
+            # Используем фиксированные лимиты скорости
+            min_speed = 100.0
+            max_speed = 500.0
+            if self.speed < min_speed: self.speed = min_speed
+            if self.speed > max_speed: self.speed = max_speed
+            # --------------------------------------------------------------
 
             # Пересчитываем вектора vx, vy под новую скорость
             current_vec_len = math.sqrt(self.vx ** 2 + self.vy ** 2)
@@ -69,16 +78,17 @@ class MultiplyZone:
         left_x = self.x - self.width / 2
         bottom_y = self.y - self.height / 2
 
-        # Рисуем ЗАЛИВКУ
-        arcade.draw_lbwh_rectangle_filled(left_x, bottom_y, self.width, self.height, self.color)
+        # Рисуем ЗАЛИВКУ (Снижаем Alpha с 100 до 25)
+        # Было: (100, 255, 100, 100)
+        arcade.draw_lbwh_rectangle_filled(left_x, bottom_y, self.width, self.height, (100, 255, 100, 25))
 
-        # Рисуем ОБВОДКУ
-        border_color = (self.color[0], self.color[1], self.color[2], 100)
-        arcade.draw_lbwh_rectangle_outline(left_x, bottom_y, self.width, self.height, border_color, 2)
+        # Рисуем ОБВОДКУ (Тоже делаем прозрачной)
+        border_color = (self.color[0], self.color[1], self.color[2], 50)
+        arcade.draw_lbwh_rectangle_outline(left_x, bottom_y, self.width, self.height, border_color, 1)
 
-        # Рисуем текст с множителем
+        # Текст (Если нужен, можно уменьшить или убрать. Оставил но изменил цвет на бледный)
         arcade.draw_text(f"x{self.multiplier:.2f}", self.x, self.y,
-                         (155, 155, 155, 255), 16, anchor_x="center", anchor_y="center", bold=True)
+                         (100, 150, 100, 150), 16, anchor_x="center", anchor_y="center", bold=True)
 
     def check_collision(self, coin) -> bool:
         """Проверяет, находится ли центр монетки внутри зоны"""

@@ -82,6 +82,13 @@ class Wisp(arcade.Sprite):
             if coin.wisp_immunity_timer > 0:
                 continue
 
+            # === ИСПРАВЛЕНИЕ: Висп не трогает ЛЕТЯЩИЕ монеты ===
+            # Это нужно, чтобы монетки, выброшенные торнадо или взрывом,
+            # продолжали лететь, не цепляясь за висп.
+            if coin.is_moving:
+                continue
+            # =========================================================
+
             dx = coin.sprite.center_x - self.center_x
             dy = coin.sprite.center_y - self.center_y
             dist_sq = dx * dx + dy * dy

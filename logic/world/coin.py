@@ -24,7 +24,7 @@ class Coin:
 
         self.sprite.texture = sprites["heads"]
         self.sprite.scale = self.scale
-
+        self.tornado_exit_time = 0.0
         self.radius = 32.0 * self.scale
 
         self.lifetime = None  # Время жизни (0 = бесконечно)
@@ -147,17 +147,34 @@ class Coin:
 
         # --- БЛОК 2: ЛЕЖАЩАЯ МОНЕТКА (is_moving = False) ---
         else:
+            # === ИСПРАВЛЕНИЕ ТРЕНИЯ ПОСЛЕ ТОРНАДО ===
+            # Если монетка только что вышла из торнадо, она очень скользкая
+            current_friction = 0.93
+            if self.tornado_exit_time > 0:
+                current_friction = 0.985  # Очень низкое трение (скользит как по льду)
+                self.tornado_exit_time -= dt
+            # ==========================================
+
             # === В ТОРНАДО (Скользит) ===
             if self.tornado_hit:
-                # Трение 0.96
                 self.vx *= 0.96
                 self.vy *= 0.96
                 self._clamp_speed()
+            # === ОБЫЧНАЯ ЗЕМЛЯ ===
+            else:
+                self.vx *= current_friction  # Используем переменную current_friction
+                self.vy *= current_friction
 
-                if abs(self.vx) > 0.1 or abs(self.vy) > 0.1:
-                    self.sprite.center_x += self.vx * dt
-                    self.sprite.center_y += self.vy * dt
+                if abs(self.vx) < 0.5: self.vx = 0
+                if abs(self.vy) < 0.5: self.vy = 0
+            # =====================================
 
+            self.sprite.center_x += self.vx * dt
+            self.sprite.center_y += self.vy * dt
+
+            self._handle_collisions(nearby_coins)
+
+            if not self.tornado_hit:
                 self._handle_wall_bounce(width, height)
 
             # === ОБЫЧНАЯ ЗЕМЛЯ ===

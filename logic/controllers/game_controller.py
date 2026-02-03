@@ -54,9 +54,6 @@ class GameController:
         self.tornado_unlocked = False
         self.tornado_cooldown_level = 0
         self.tornado_base_cooldown = 60.0
-        self.width = world_width
-        self.height = world_height
-        self.scale_factor = scale_factor
         self.tornado_list = arcade.SpriteList()
 
         # === ПЕРЕМЕННЫЕ СИСТЕМЫ КОМБО ===
@@ -445,17 +442,6 @@ class GameController:
 
                         if self.combo_value > self.combo_limit:
                             self.combo_value = self.combo_limit
-
-                        # Визуальный эффект прилетающего "+0.1"
-                        # Спавним по центру экрана
-                        self.combo_visuals.append({
-                            'start_x': self.width / 2,
-                            'start_y': self.height / 2,
-                            'x': 0, 'y': 0,
-                            'life': 1.0,  # Время полета
-                            'scale': 0.0,
-                            'color': (255, 165, 0, 255)
-                        })
                 # ======================
                 # --- ЛОГИКА ТЕКСТА И ЧАСТИЦ (ТОЛЬКО ДЛЯ КРИТА) ---
 
@@ -635,26 +621,6 @@ class GameController:
                 self.combo_watch_timer = 0.0
                 self.combo_hit_this_second = False
 
-            # 2. Обновление визуалов (летящие +0.1)
-            for vis in self.combo_visuals[:]:
-                vis['life'] -= dt
-                # Движение от центра экрана к точке спавна комбо (слева сверху)
-                # Точка комбо: 50 пикселей от левого края, 50 от верхнего
-                target_x = 60 * self.scale_factor
-                target_y = self.height - (60 * self.scale_factor)
-
-                # Простая интерполяция (прилет)
-                lerp = 1.0 - (vis['life'] / 1.0)  # 0 к 1
-                vis['x'] = vis['start_x'] * (1 - lerp) + target_x * lerp
-                vis['y'] = vis['start_y'] * (1 - lerp) + target_y * lerp
-
-                # Масштаб от 0 до 1
-                vis['scale'] = lerp
-
-                if vis['life'] <= 0:
-                    self.combo_visuals.remove(vis)
-        # =================================
-
         # === ОБНОВЛЕНИЕ ПЛАВАЮЩИХ ЦИФР (ОПТИМИЗИРОВАНО) ===
         for ft in self.floating_texts[:]:
             # 1. Перемещаем и стараем (Физика)
@@ -783,10 +749,8 @@ class GameController:
             draw_x = p['x'] + sx
             draw_y = p['y'] + sy
             arcade.draw_circle_filled(draw_x, draw_y, p['size'], current_color)
-
+        # === 12.5 ОТРИСОВКА СИСТЕМЫ КОМБО ===
         if self.combo_unlocked and self.combo_value > 1.0:
-            # ... (код отрисовки +0.1 остается без изменений) ...
-
             # 2. Основной текст комбо
             combo_x = 60 * self.scale_factor
             combo_y = self.height - (60 * self.scale_factor)
@@ -1755,14 +1719,14 @@ class GameController:
 
         # Спавним красивый текст награды над жуком
         if reward > 0:
-            # Форматируем число, чтобы не было слишком длинным
-            from logic.economy.balance import Balance  # Импорт если нужно, но можно просто сформатировать
-            reward_str = f"+{reward}"
-            # Если число большое, используем формат (1K, 1M)
-            if reward > 1000:
-                reward_str = f"+{reward / 1000:.1f}K"
+            # --- ИСПРАВЛЕНИЕ ФОРМАТИРОВАНИЯ ---
             if reward > 1000000:
                 reward_str = f"+{reward / 1000000:.1f}M"
+            elif reward > 1000:
+                reward_str = f"+{reward / 1000:.1f}K"
+            else:
+                reward_str = f"+{reward}"
+            # ------------------------------------
 
             self.create_floating_text(reward_str, self.beetle.center_x, self.beetle.top + 20, (255, 255, 255, 255))
         # ------------------------------
@@ -1826,8 +1790,10 @@ class GameController:
         min_y = margin
         max_y = self.height - margin
 
+        # === ЭТОТ БЛОК ВЫЧИСЛЕНИЯ БЫЛ УТЕРЯН ===
         target_x = random.uniform(min_x, max_x)
         target_y = random.uniform(min_y, max_y)
+        # =====================================
 
         self.tornado = Tornado(
             target_x,
@@ -1838,6 +1804,12 @@ class GameController:
             world_scale=self.scale_factor,  # Физический масштаб
             world_width=self.width
         )
+
+        # === ИСПРАВЛЕНИЕ: УВЕЛИЧИВАЕМ РАДИУС В 2 РАЗА ===
+        # По умолчанию в классе Tornado радиус считается как world_width / 6.0
+        # Мы меняем его на world_width / 3.0 (это ровно в 2 раза больше)
+        self.tornado.pull_radius = (self.width / 3.0) * self.scale_factor
+        # --------------------------------------------------
 
         self.tornado_list.clear()
         self.tornado_list.append(self.tornado)

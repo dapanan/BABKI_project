@@ -92,20 +92,26 @@ class Tornado(arcade.Sprite):
             if coin.tornado_hit:
                 coin.tornado_hit = False
 
-                # === ИСПРАВЛЕНИЕ: СБРОС СКОРОСТИ ===
-                # Резко гасим скорость, чтобы монетка упала и не улетала
-                coin.vx *= 0.1
-                coin.vy *= 0.1
+                # === НОВАЯ ФИЗИКА: СИЛЬНАЯ ИНЕРЦИЯ + СКОЛЬЖЕНИЕ ===
+                # 1. Не сбрасываем скорость до 0, а оставляем 80% (высокая инерция)
+                coin.vx *= 0.8
+                coin.vy *= 0.8
 
-                if coin.is_moving:
-                    coin.is_moving = False
-                    coin.anim = []
-                    coin.landed = True
-                    coin.just_landed = True
-                    coin.manual_override = False
+                # 2. Переключаем монетку в режим "на земле" (is_moving = False)
+                # В этом режиме в Coin.update включится логика скольжения (low friction)
+                coin.is_moving = False
+                coin.anim = []
+                coin.landed = True
+                coin.just_landed = True
+                coin.manual_override = False
 
-                    if coin.fixed_outcome_texture:
-                        coin.sprite.texture = coin.fixed_outcome_texture
-                    else:
-                        coin.sprite.texture = coin.sprites.get("heads")
-                # =========================
+                # 3. Включаем таймер скольжения на 1.5 секунды
+                # (Это заставит монетку скользить далеко)
+                coin.tornado_exit_time = 1.5
+
+                # 4. Устанавливаем текстуру
+                if coin.fixed_outcome_texture:
+                    coin.sprite.texture = coin.fixed_outcome_texture
+                else:
+                    coin.sprite.texture = coin.sprites.get("heads")
+                # ================================================
