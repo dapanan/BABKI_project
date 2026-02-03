@@ -3,6 +3,7 @@ import random
 import math
 import json
 import os
+import time
 from logic.world.gold_coin import GoldCoin
 from logic.world.bronze_coin import BronzeCoin
 from logic.world.silver_coin import SilverCoin
@@ -29,6 +30,22 @@ class GameController:
         self.sound_manager = sound_manager
         self.coins = []
         self.particles = []
+        self.floating_texts = [] # Список плавающих текстов
+
+        # === ПЕРЕМЕННЫЕ ДЛЯ ТРЯСКИ ЭКРАНА ===
+        self.shake_timer = 0.0        # Таймер эффекта (сколько осталось трясти)
+        self.shake_intensity = 0.0     # Сила тряски (амплитуда)
+        # ===================================
+
+        self.combo_watch_timer = 0.0
+        self.combo_hit_this_second = False
+
+        # --- ДОБАВИТЬ ---
+        self.combo_particle_timer = 0.0
+        # ----------------
+
+        # Визуальные эффекты комбо
+        self.combo_visuals = []
 
         # --- ТОРНАДО ---
         self.tornado = None
@@ -41,6 +58,20 @@ class GameController:
         self.height = world_height
         self.scale_factor = scale_factor
         self.tornado_list = arcade.SpriteList()
+
+        # === ПЕРЕМЕННЫЕ СИСТЕМЫ КОМБО ===
+        self.combo_unlocked = False
+        self.combo_value = 1.0  # Текущее значение множителя (1.0 = скрыто)
+        self.combo_limit_level = 1
+        self.combo_base_limit = 2.0
+        self.combo_limit = self.combo_base_limit
+        self.combo_watch_timer = 0.0  # Таймер 1 секунды
+        self.combo_hit_this_second = False  # Было ли попадание за секунду
+
+        # Визуальные эффекты комбо
+        self.combo_visuals = []  # Список летящих цифр комбо
+        self.combo_stagnation_angle = 0.0  # Угол для вращения при залипании
+        # ================================
 
         # --- МЕТЕОРИТ ---
         self.meteor = None
@@ -72,6 +103,7 @@ class GameController:
 
         self.bronze_value_level = 0
         self.silver_value_level = 0
+        self.silver_crit_chance_level = 1
         self.gold_value_level = 0
         self.wisp_speed_level = 0
         self.wisp_size_level = 0
@@ -85,7 +117,10 @@ class GameController:
             "silver_crit_upgrade": 500,
             "grab_upgrade": 500,
             "gold_explosion_upgrade": 2000,
+            "silver_crit_chance_upgrade": 500,
             "wisp_spawn": 5000,
+            "unlock_combo": 10000,
+            "upgrade_combo_limit": 2000,
             "wisp_speed": 1000,
             "wisp_size": 1000,
             "spawn_zone_2": 10000,
@@ -133,6 +168,7 @@ class GameController:
         self.start_coin_y = world_height * 0.5
 
         self.beetle = None
+        self.beetle_stash = 0
         self.beetle_respawn_timer = 0.0
         self.beetle_respawn_interval = 0.0
         self.spawn_beetle_initial()
@@ -156,7 +192,8 @@ class GameController:
                               scale_factor=self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "silver":
-            crit_chance = 0.1 * self.silver_crit_level
+            # ИСПРАВЛЕНИЕ: Используем новый уровень шанса (0.5% за уровень)
+            crit_chance = 0.005 * self.silver_crit_chance_level
             coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance, scale=1.1 * self.scale_factor,
                               scale_factor=self.scale_factor)
             coin.explosion_chance = 0
@@ -176,6 +213,7 @@ class GameController:
             coin = CursedCoin(x, y, self.assets.cursed_coin_sprites, scale=1.2 * self.scale_factor, scale_factor=self.scale_factor)
             coin.explosion_chance = 0
 
+        # Добавляем монетку только ОДИН РАЗ
         self.coins.append(coin)
 
     def _get_coin_type_string(self, coin) -> str:
@@ -190,7 +228,8 @@ class GameController:
         width = self.width
         height = self.height
 
-        self.coins = [c for c in self.coins if not (hasattr(c, 'lifetime') and c.lifetime is not None and c.lifetime <= 0)]
+        self.coins = [c for c in self.coins if
+                      not (hasattr(c, 'lifetime') and c.lifetime is not None and c.lifetime <= 0)]
         # === ЛОГИКА АВТО-ПЕРЕВОРОТА ===
         if self.auto_flip_level >= 1:
             self.auto_flip_timer += dt
@@ -261,7 +300,7 @@ class GameController:
                 self.spawn_beetle()
         # ===========================================
 
-        # === ЛОГИКА СПАВНА СПЕЦИАЛЬНЫХ МОНЕТ ===
+        # === ЛОГИКА СПАВНА СПЕЦИАЛЬНЫХ МОНЕТЕК ===
         self.spawn_special_coin_timer += dt
         if self.spawn_special_coin_timer >= self.spawn_special_coin_interval:
             self.spawn_special_coin_timer = 0
@@ -320,6 +359,13 @@ class GameController:
                             coin.hit(dx, dy)
 
                     self.meteor = None
+
+                    self.create_explosion_particles(impact_x, impact_y)
+
+                    # === ТРЯСКА ЭКРАНА (Метеорит) ===
+                    self.shake_timer = 0.8  # Длительность 0.5 сек
+                    self.shake_intensity = 40.0  # Сила 10 пикселей
+                    # ======================================
 
             # 2. Если кратер существует (Ждем, пока он исчезнет)
             elif self.crater:
@@ -385,67 +431,115 @@ class GameController:
             outcome = coin.check_land_event()
             if outcome > 0:
                 total_multiplier = 1.0
-                # (Здесь может быть логика зон, если она у тебя есть)
-                final_value = int(outcome * total_multiplier)
-                self.balance.add(final_value)
+                # Расчет множителя комбо (если система открыта и комбо > 1)
+                current_combo = self.combo_value if self.combo_unlocked else 1.0
+                final_value = int(outcome * total_multiplier * current_combo)
+                self._add_income(final_value)
+                # === ЛОГИКА КОМБО ===
+                if self.combo_unlocked and outcome > 0:
+                    self.combo_hit_this_second = True  # Отмечаем, что было попадание
 
-                # Критический эффект серебра
-                is_crit_now = False
-                if isinstance(coin, SilverCoin) and coin.is_crit:
-                    is_crit_now = True
-                    coin.is_crit = False
+                    # Проверяем, можем ли поднять комбо
+                    if self.combo_value < self.combo_limit:
+                        self.combo_value += 0.1
 
-                if is_crit_now:
-                    self.create_particles(coin.sprite.center_x, coin.sprite.center_y, (192, 192, 192, 255), coin)
+                        if self.combo_value > self.combo_limit:
+                            self.combo_value = self.combo_limit
+
+                        # Визуальный эффект прилетающего "+0.1"
+                        # Спавним по центру экрана
+                        self.combo_visuals.append({
+                            'start_x': self.width / 2,
+                            'start_y': self.height / 2,
+                            'x': 0, 'y': 0,
+                            'life': 1.0,  # Время полета
+                            'scale': 0.0,
+                            'color': (255, 165, 0, 255)
+                        })
+                # ======================
+                # --- ЛОГИКА ТЕКСТА И ЧАСТИЦ (ТОЛЬКО ДЛЯ КРИТА) ---
+
+                # Обработка Серебра
+                if isinstance(coin, SilverCoin):
+                    if coin.is_crit:
+                        coin.is_crit = False
+                        # Спавним текст КРИТА (Цифра уровня апгрейда)
+                        text_x = coin.sprite.right + 10
+                        text_y = coin.sprite.top - 10
+                        self.create_floating_text(f"x{self.silver_crit_level}", text_x, text_y, (100, 200, 255, 255),
+                                                  coin)
+                        # Спавним частицы КРИТА
+                        self.create_particles(coin.sprite.center_x, coin.sprite.center_y, (192, 192, 192, 255), coin)
+                    # Если не крит - ТЕКСТА НЕТ
+                # Для Золота и Бронзы ТЕКСТА НЕТ
+            # =====================================
+
             # === ЛОГИКА СПЕЦ МОНЕТ ===
 
-            # Lucky Coin
+                # Lucky Coin
             if isinstance(coin, LuckyCoin):
-                # === ИСПРАВЛЕНИЕ: Обрабатываем только если монетка УЖЕ ПРИЗЕМЛИЛАСЬ ===
                 if coin.landed:
                     if outcome > 0 and not coin.sound_played:
                         current_balance = self.balance.get()
-                        new_balance = current_balance * 5
-                        self.balance.set(new_balance)
+                        # Прибыль = текущий баланс * 4 (так как итог x5)
+                        profit = int(current_balance * 4)
+
+                        # --- ЗАМЕНА ЛОГИКИ ---
+                        self._add_income(profit)
+
+                        # Обновляем баланс (там уже добавлена доля игрока)
+                        # Просто получаем текущий баланс и рисуем текст х5
+                        updated_balance = self.balance.get()
+                        self.balance.set(updated_balance)  # Просто обновляем (для единообразия)
+
+                        lx = coin.sprite.right + 10
+                        ly = coin.sprite.top - 10
+                        self.create_floating_text("x5", lx, ly, (50, 255, 50, 255), coin)
+                        # -----------------------
+
                         if self.sound_manager.lucky_success:
                             arcade.play_sound(self.sound_manager.lucky_success, volume=0.3)
                         coin.sound_played = True
 
-                    elif outcome == 0 and not coin.sound_played:
-                        # === ИСПРАВЛЕНИЕ: Звук падения золотой монетки ===
-                        c_type = "gold"
-                        self.sound_manager.play_land(c_type)
-                        # ==================================================
-                        coin.sound_played = True
-
             # Cursed Coin
             elif isinstance(coin, CursedCoin):
-
-                # УСПЕХ (Орел)
+                # УСПЕХ (Орел) - Текст есть
                 if outcome > 0 and not coin.sound_played:
                     current_balance = self.balance.get()
-                    new_balance = current_balance * 100
-                    self.balance.set(new_balance)
+                    # Прибыль = текущий баланс * 99 (итог x100)
+                    profit = int(current_balance * 99)
+
+                    # --- ЗАМЕНА ЛОГИКИ ---
+                    self._add_income(profit)
+
+                    updated_balance = self.balance.get()
+                    self.balance.set(updated_balance)
+
+                    cx = coin.sprite.right + 10
+                    cy = coin.sprite.top - 10
+                    self.create_floating_text("x100", cx, cy, (255, 50, 50, 255), coin)
+                    # -----------------------
+
                     if self.sound_manager.cursed_success:
                         arcade.play_sound(self.sound_manager.cursed_success, volume=0.3)
                     coin.sound_played = True
 
-                # ПРОВАЛ (Решка)
+                # ПРОВАЛ (Решка) - ТЕКСТА НЕТ (только эффекты и тряска)
                 if coin.bankruptcy_triggered:
                     if self.sound_manager.cursed_fail:
                         arcade.play_sound(self.sound_manager.cursed_fail, volume=0.3)
 
-                    cx, cy = coin.sprite.center_x, coin.sprite.center_y
+                    cx_pos, cy_pos = coin.sprite.center_x, coin.sprite.center_y
 
                     self.balance.set(0)
                     print("DEBUG: CURSED COIN TOOK ALL MONEY!")
 
-                    self.create_explosion_particles(cx, cy)
+                    self.create_explosion_particles(cx_pos, cy_pos)
 
                     for c in self.coins:
                         if c is not coin:
-                            dx = c.sprite.center_x - cx
-                            dy = c.sprite.center_y - cy
+                            dx = c.sprite.center_x - cx_pos
+                            dy = c.sprite.center_y - cy_pos
                             dist_sq = dx * dx + dy * dy
                             if dist_sq > 0:
                                 dist = math.sqrt(dist_sq)
@@ -458,6 +552,12 @@ class GameController:
                                 c._select_flying_animation()
 
                     coin.bankruptcy_triggered = False
+                    self.create_explosion_particles(cx_pos, cy_pos)
+
+                    # === ТРЯСКА ЭКРАНА (Проклятая монета x2) ===
+                    self.shake_timer = 1.0  # Длительность 0.4 сек
+                    self.shake_intensity = 80.0  # Сила 20 пикселей (В ДВА РАЗА БОЛЬШЕ)
+                    # =================================================
                     coin.sound_played = True
 
             # === ОБЫЧНЫЕ ЗВУКИ ПЕРЕБРАСЫВАНИЯ ===
@@ -503,37 +603,269 @@ class GameController:
             has_zone_2=(self.zone_2 is not None),
             has_zone_5=(self.zone_5 is not None)
         )
-        self.ui.update(self.balance.get(), self.get_coin_counts())
+
+        # === ЛОГИКА ТРЯСКИ ЭКРАНА (Затухание) ===
+        if self.shake_timer > 0:
+            self.shake_timer -= dt
+            # Уменьшаем силу тряски плавно (умножаем на 0.9 каждый кадр)
+            self.shake_intensity *= 0.9
+
+            # Если сила стала слишком маленькой, выключаем эффект
+            if self.shake_intensity < 0.5:
+                self.shake_timer = 0
+                self.shake_intensity = 0
+        # ========================================
+
+        # === ОБНОВЛЕНИЕ СИСТЕМЫ КОМБО ===
+        if self.combo_unlocked:
+
+            # --- ДОБАВИТЬ ЭФФЕКТ ГОРЕНИЯ ПРИ x10 ---
+            if self.combo_value >= 10.0:
+                self.combo_particle_timer += dt
+                if self.combo_particle_timer >= 0.05:  # Каждые 0.05 сек спавним частицы
+                    self.combo_particle_timer = 0
+                    self.create_combo_fire_particles()
+            # ----------------------------------------
+            # 1. Таймер (ежесекундный)
+            self.combo_watch_timer += dt
+            if self.combo_watch_timer >= 1.0:
+                if not self.combo_hit_this_second:
+                    # Не было попаданий секунду - сброс
+                    self.combo_value = 1.0
+                self.combo_watch_timer = 0.0
+                self.combo_hit_this_second = False
+
+            # 2. Обновление визуалов (летящие +0.1)
+            for vis in self.combo_visuals[:]:
+                vis['life'] -= dt
+                # Движение от центра экрана к точке спавна комбо (слева сверху)
+                # Точка комбо: 50 пикселей от левого края, 50 от верхнего
+                target_x = 60 * self.scale_factor
+                target_y = self.height - (60 * self.scale_factor)
+
+                # Простая интерполяция (прилет)
+                lerp = 1.0 - (vis['life'] / 1.0)  # 0 к 1
+                vis['x'] = vis['start_x'] * (1 - lerp) + target_x * lerp
+                vis['y'] = vis['start_y'] * (1 - lerp) + target_y * lerp
+
+                # Масштаб от 0 до 1
+                vis['scale'] = lerp
+
+                if vis['life'] <= 0:
+                    self.combo_visuals.remove(vis)
+        # =================================
+
+        # === ОБНОВЛЕНИЕ ПЛАВАЮЩИХ ЦИФР (ОПТИМИЗИРОВАНО) ===
+        for ft in self.floating_texts[:]:
+            # 1. Перемещаем и стараем (Физика)
+            ft['life'] -= dt
+
+            # Движение вверх-вправо
+            ft['text_obj'].y += ft['vy'] * dt
+            ft['text_obj'].x += ft['vx'] * dt
+
+            # 2. Привязка к монетке (если она есть)
+            if ft['linked_coin'] is not None:
+                # Монета еще жива?
+                if ft['linked_coin'] not in self.coins:
+                    ft['linked_coin'] = None
+                else:
+                    # Монета жива, текст следует за ней (привязка к правому верхнему углу)
+                    ft['text_obj'].x = ft['linked_coin'].sprite.right + 10
+                    ft['text_obj'].y = ft['linked_coin'].sprite.top - 10
+
+            # 3. Обновляем прозрачность
+            alpha = int(255 * (ft['life'] / 1.5))
+            if alpha < 0: alpha = 0
+
+            # Применяем цвет с новой альфой
+            r, g, b, _ = ft['base_color']
+            ft['text_obj'].color = (r, g, b, alpha)
+
+            # 4. Удаляем мертвые тексты
+            if ft['life'] <= 0:
+                self.floating_texts.remove(ft)
+        # ========================================
 
     def draw(self) -> None:
+        # === 1. РАСЧЕТ СДВИГА ЭКРАНА (ТРЯСКА) ===
+        if self.shake_timer > 0:
+            sx = random.uniform(-self.shake_intensity, self.shake_intensity)
+            sy = random.uniform(-self.shake_intensity, self.shake_intensity)
+        else:
+            sx = 0.0
+            sy = 0.0
+        # ============================================
+
+        # === 2. ОТРИСОВКА ЗОН ===
         for zone in self.zones:
+            zone.x += sx
+            zone.y += sy
             zone.draw()
+            zone.x -= sx
+            zone.y -= sy
 
+        # === 3. ОТРИСОВКА ЖУКА ===
         if self.beetle:
-            self.beetle.draw()
+            self.beetle.center_x += sx
+            self.beetle.center_y += sy
+            arcade.draw_sprite(self.beetle)
+            self.beetle.center_x -= sx
+            self.beetle.center_y -= sy
 
+        # === 4. ОТРИСОВКА КРАТЕРА ===
         if self.crater:
-            self.crater.draw()
+            self.crater.center_x += sx
+            self.crater.center_y += sy
+            arcade.draw_sprite(self.crater)
+            self.crater.center_x -= sx
+            self.crater.center_y -= sy
 
+        # === 5. ОТРИСОВКА МОНЕТОК (НЕПОДВИЖНЫЕ) ===
         for coin in self.coins:
-            if not coin.is_moving: coin.draw()
+            if not coin.is_moving:
+                coin.sprite.center_x += sx
+                coin.sprite.center_y += sy
+                arcade.draw_sprite(coin.sprite)
+                coin.sprite.center_x -= sx
+                coin.sprite.center_y -= sy
+
+        # === 6. ОТРИСОВКА МОНЕТОК (ПОДВИЖНЫЕ) ===
         for coin in self.coins:
-            if coin.is_moving: coin.draw()
+            if coin.is_moving:
+                coin.sprite.center_x += sx
+                coin.sprite.center_y += sy
+                arcade.draw_sprite(coin.sprite)
+                coin.sprite.center_x -= sx
+                coin.sprite.center_y -= sy
 
-        self.wisp_list.draw()
+        # === 7. ОТРИСОВКА ВИСПА ===
+        for wisp in self.wisp_list:
+            wisp.center_x += sx
+            wisp.center_y += sy
+            arcade.draw_sprite(wisp)
+            wisp.center_x -= sx
+            wisp.center_y -= sy
 
+        # === 8. ОТРИСОВКА ВЗРЫВОВ ===
         for expl in self.explosions:
-            expl.draw()
+            expl.center_x += sx
+            expl.center_y += sy
+            arcade.draw_sprite(expl)
+            expl.center_x -= sx
+            expl.center_y -= sy
 
-        self.tornado_list.draw()
+        # === 9. ОТРИСОВКА ТОРНАДО ===
+        for tornado in self.tornado_list:
+            tornado.center_x += sx
+            tornado.center_y += sy
+            arcade.draw_sprite(tornado)
+            tornado.center_x -= sx
+            tornado.center_y -= sy
 
+        # === 10. ОТРИСОВКА МЕТЕОРИТА ===
         if self.meteor:
-            self.meteor.draw()
+            self.meteor.center_x += sx
+            self.meteor.center_y += sy
+            arcade.draw_sprite(self.meteor)
+            self.meteor.center_x -= sx
+            self.meteor.center_y -= sy
 
+        # === 11. ОТРИСОВКА ЧАСТИЦ ===
         for p in self.particles:
-            alpha = int(255 * (p['life'] / 1.0))
+            # ИСПРАВЛЕНИЕ КРАША: min(255, ...) гарантирует что альфа не превысит 255
+            life_ratio = p['life'] / 1.0
+            alpha = min(255, int(255 * life_ratio))
+            if alpha < 0: alpha = 0
+
             current_color = (p['color'][0], p['color'][1], p['color'][2], alpha)
-            arcade.draw_circle_filled(p['x'], p['y'], p['size'], current_color)
+
+            draw_x = p['x'] + sx
+            draw_y = p['y'] + sy
+            arcade.draw_circle_filled(draw_x, draw_y, p['size'], current_color)
+
+        if self.combo_unlocked and self.combo_value > 1.0:
+            # ... (код отрисовки +0.1 остается без изменений) ...
+
+            # 2. Основной текст комбо
+            combo_x = 60 * self.scale_factor
+            combo_y = self.height - (60 * self.scale_factor)
+
+            # Пульсация
+            pulse = 1.0 + 0.05 * math.sin(time.time() * 5)
+            font_sz = int(40 * self.scale_factor * pulse)
+
+            # Залипание и выбор цвета
+            # --- ЗАМЕНИТЬ ЛОГИКУ ЦВЕТА НА ЭТУ ---
+
+            # Получаем целое число комбо (1, 2, ... 10)
+            combo_int = int(self.combo_value)
+
+            # Палитра: Красный, Оранжевый, Темно-Желтый, Зеленый, Голубой, Синий, Фиолетовый, Красный, Оранжевый, Темно-Желтый
+            # Используем более темные оттенки желтого и оранжевого, чтобы было видно на светлом фоне
+            color_palette = [
+                (200, 30, 30, 255),  # 1x: Красный (темный)
+                (220, 100, 0, 255),  # 2x: Оранжевый (темный)
+                (200, 160, 0, 255),  # 3x: Желтый (темно-золотой, ВИДНО)
+                (30, 180, 30, 255),  # 4x: Зеленый
+                (0, 180, 200, 255),  # 5x: Голубой
+                (50, 50, 220, 255),  # 6x: Синий
+                (180, 30, 200, 255),  # 7x: Фиолетовый
+                (200, 30, 30, 255),  # 8x: Красный
+                (220, 100, 0, 255),  # 9x: Оранжевый
+                (200, 160, 0, 255)  # 10x: Желтый (темно-золотой)
+            ]
+
+            # Выбираем цвет по индексу (combo_int - 1)
+            color_index = (combo_int - 1) % 10
+            txt_color = color_palette[color_index]
+
+            if self.combo_value >= self.combo_limit:
+                self.combo_stagnation_angle += 0.1
+                wobble_x = math.sin(self.combo_stagnation_angle * 2) * 5
+                wobble_y = math.cos(self.combo_stagnation_angle * 2) * 5
+
+                # При залипании/максе мигаем между текущим цветом и красным
+                if int(self.combo_stagnation_angle * 2) % 2 == 0:
+                    txt_color = arcade.color.RED  # Стандартный красный для контраста
+                else:
+                    # txt_color уже задан выше
+                    pass
+
+                draw_pos_x = combo_x + wobble_x + sx
+                draw_pos_y = combo_y + wobble_y + sy
+            else:
+                draw_pos_x = combo_x + sx
+                draw_pos_y = combo_y + sy
+            # ----------------------------------------
+
+            # Рисуем текст (xМножитель)
+            arcade.draw_text(
+                f"x{self.combo_value:.1f}",
+                draw_pos_x,
+                draw_pos_y,
+                txt_color,
+                font_size=font_sz,
+                anchor_x="left", anchor_y="center",
+                font_name="RuneScape-ENA"
+            )
+
+        # === 12. ОТРИСОВКА ПЛАВАЮЩИХ ЦИФР (ОПТИМИЗИРОВАНО) ===
+        # Теперь мы просто вызываем draw() у готовых объектов текста
+        for ft in self.floating_texts:
+            # Рисуем сам текст
+            # Координаты и цвет обновляются в update()
+            ft['text_obj'].draw()
+
+            # Если нужна обводка, её можно реализовать рисованием 4 раз тем же текстом со смещением
+            # Но это опять убьет производительность.
+            # Так как текст имеет прозрачность, обводка может быть не нужна на белом фоне
+            # или можно использовать темный фон под текстом (rect).
+            # Однако, если обводка критична, можно создать 4 объекта текста для каждой цифры,
+            # но это перегрузит память. Оставим пока просто текст для производительности.
+            # Если очень нужно, можно нарисовать темный прямоугольник под текстом.
+            pass
+
 
     def on_mouse_press(self, x: int, y: int, button: int) -> None:
         if button == arcade.MOUSE_BUTTON_LEFT:
@@ -626,15 +958,18 @@ class GameController:
             base_color = (gray, gray, gray)
             angle = random.uniform(0, 6.28)
             speed = random.uniform(100, 200)
-            size = random.uniform(3, 6)
+            # Размер частиц
+            size = random.uniform(4, 8)
+
             particle_data = {
                 'x': cx, 'y': cy,
                 'vx': math.cos(angle) * speed, 'vy': math.sin(angle) * speed,
-                'life': 1.0, 'color': base_color, 'size': size
+                'life': 1.0,  # Вернул к 1.0 для стабильности
+                'color': base_color, 'size': size
             }
             if coin is not None:
                 particle_data['linked_coin'] = coin
-                particle_data['decay_speed'] = 3.0
+                particle_data['decay_speed'] = 2.0
                 p_radius = coin.radius
                 particle_data['offset_x'] = math.cos(angle) * (p_radius * 0.9)
                 particle_data['offset_y'] = math.sin(angle) * (p_radius * 0.9)
@@ -653,6 +988,17 @@ class GameController:
             return True
 
         cost = self.upgrade_prices.get(upgrade_id, 0)
+
+        # === ИСПРАВЛЕНИЕ БАГА ЦЕНЫ 0 ===
+        # Если цена почему-то 0, пытаемся восстановить базовую цену для избежания бага
+        if cost == 0:
+            if upgrade_id == "upgrade_combo_limit":
+                cost = 2000 * (2 ** (self.combo_limit_level - 1)) if self.combo_limit_level > 1 else 2000
+                self.upgrade_prices[upgrade_id] = cost
+            elif upgrade_id == "unlock_combo":
+                cost = 10000
+        # ===============================
+
         if self.balance.can_spend(cost):
             self.balance.spend(cost)
             success = True
@@ -747,6 +1093,38 @@ class GameController:
                 else:
                     success = False
 
+            elif upgrade_id == "unlock_combo":
+                if not self.combo_unlocked:
+                    self.combo_unlocked = True
+                    self.ui.mark_purchased(upgrade_id)
+                else:
+                    success = False
+
+            elif upgrade_id == "upgrade_combo_limit":
+                if self.combo_limit >= 10.0:
+                    self.ui.set_button_disabled("upgrade_combo_limit", "Лимит комбо (Макс.)")
+                    success = False  # Блокируем покупку
+                else:
+                    self.combo_limit_level += 1
+                    # Лимит = База (2.0) + (Уровень * 0.5).
+                    new_limit = self.combo_base_limit + (self.combo_limit_level * 0.5)
+
+                    # Жестко ограничиваем 10.0 (на случай пересчета)
+                    if new_limit > 10.0:
+                        new_limit = 10.0
+
+                    self.combo_limit = new_limit
+                    if cost == 0: cost = 2000
+
+                    new_price = math.ceil(cost * 2.0)
+                    self.upgrade_prices[upgrade_id] = new_price
+
+                    # Проверка: достигли ли мы максимума ПОСЛЕ покупки?
+                    if self.combo_limit >= 10.0:
+                        self.ui.set_button_disabled("upgrade_combo_limit", "Лимит комбо (Макс.)")
+                    else:
+                        self.ui.update_button(upgrade_id, new_price, level=self.combo_limit_level)
+
             elif upgrade_id == "wisp_size":
                 if self.wisp:
                     self.wisp.upgrade_scale(0.05)
@@ -830,6 +1208,12 @@ class GameController:
                 else:
                     success = False
 
+            elif upgrade_id == "silver_crit_chance_upgrade":
+                self.silver_crit_chance_level += 1
+                new_price = math.ceil(cost * 2.718)
+                self.upgrade_prices[upgrade_id] = new_price
+                self.ui.update_button(upgrade_id, new_price, level=self.silver_crit_chance_level)
+
             elif upgrade_id == "upgrade_zone_2_mult":
                 if self.zone_2:
                     self.zone_2.upgrade_multiplier(0.05)
@@ -892,7 +1276,6 @@ class GameController:
                 self.balance.add(cost)
                 return False
 
-
         return False
 
     def get_save_path(self):
@@ -903,6 +1286,7 @@ class GameController:
             "balance": self.balance.get(),
             "upgrade_prices": self.upgrade_prices,
             "silver_crit_level": self.silver_crit_level,
+            "beetle_stash": self.beetle_stash,
             "auto_flip_level": self.auto_flip_level,
             "flags": {
                 "has_gold_coin": self.has_gold_coin,
@@ -915,6 +1299,7 @@ class GameController:
             "levels": {
                 "bronze_coin": self.bronze_coin_level,
                 "silver_coin": self.silver_coin_level,
+                "silver_crit_chance_level": self.silver_crit_chance_level,
                 "gold_coin": self.gold_coin_level,
                 "bronze_value": self.bronze_value_level,
                 "silver_value": self.silver_value_level,
@@ -929,7 +1314,12 @@ class GameController:
             "meteor_unlocked": self.meteor_unlocked,
             "meteor_cooldown_level": self.meteor_cooldown_level,
             "tornado_unlocked": self.tornado_unlocked,
-            "tornado_cooldown_level": self.tornado_cooldown_level
+            "tornado_cooldown_level": self.tornado_cooldown_level,
+            # === ДАННЫЕ КОМБО ===
+            "combo_unlocked": self.combo_unlocked,
+            "combo_limit_level": self.combo_limit_level,
+            "combo_value": self.combo_value
+            # ===================
         }
 
         if self.wisp:
@@ -1003,7 +1393,16 @@ class GameController:
 
             self.balance._value = data["balance"]
             self.upgrade_prices = data["upgrade_prices"]
+
+            # === ИСПРАВЛЕНИЕ БАГА ЦЕНЫ КОМБО ПРИ ЗАГРУЗКЕ ===
+            if self.upgrade_prices.get("upgrade_combo_limit", 0) == 0:
+                self.upgrade_prices["upgrade_combo_limit"] = 2000
+            # =================================================
+
+            self.balance._value = data["balance"]
+            self.beetle_stash = data.get("beetle_stash", 0)
             self.silver_crit_level = data["silver_crit_level"]
+            self.silver_crit_chance_level = data.get("silver_crit_chance_level", 1)
             self.auto_flip_level = data.get("auto_flip_level", 0)
 
             flags = data["flags"]
@@ -1031,12 +1430,34 @@ class GameController:
             self.tornado_unlocked = data.get("tornado_unlocked", False)
             self.tornado_cooldown_level = data.get("tornado_cooldown_level", 0)
 
+            # === ЗАГРУЗКА КОМБО (ИСПРАВЛЕНО) ===
+            self.combo_unlocked = data.get("combo_unlocked", False)
+            self.combo_limit_level = data.get("combo_limit_level", 1)
+            loaded_combo_value = data.get("combo_value", 1.0)
+
+            # Пересчитываем лимит
+            new_limit = self.combo_base_limit + (self.combo_limit_level * 0.5)
+            if new_limit > 10.0: new_limit = 10.0
+            self.combo_limit = new_limit
+
+            # === ИСПРАВЛЕНИЕ: Ограничиваем комбо текущим лимитом ===
+            if loaded_combo_value > self.combo_limit:
+                loaded_combo_value = self.combo_limit
+            self.combo_value = loaded_combo_value
+            # ==================================================
+
             if self.tornado_unlocked:
                 self.ui.mark_purchased("spawn_tornado")
                 self.ui.update_tornado_state(True)
 
             self.ui.update_button("tornado_cooldown_upgrade", self.upgrade_prices["tornado_cooldown_upgrade"],
                                   level=self.tornado_cooldown_level)
+
+            if self.combo_unlocked:
+                self.ui.mark_purchased("unlock_combo")
+
+            self.ui.update_button("upgrade_combo_limit", self.upgrade_prices.get("upgrade_combo_limit", 2000),
+                                  level=self.combo_limit_level)
 
             # 5. Загрузка Виспа
             wisp_data = data.get("wisp")
@@ -1085,7 +1506,7 @@ class GameController:
                     c = BronzeCoin(c_data["x"], c_data["y"], self.assets.bronze_coin_sprites, scale=c_data["scale"],
                                    scale_factor=self.scale_factor)
                 elif c_type == "silver":
-                    crit_chance = 0.1 * self.silver_crit_level
+                    crit_chance = 0.005 * self.silver_crit_chance_level  # Используем правильный шанс
                     c = SilverCoin(c_data["x"], c_data["y"], self.assets.silver_coin_sprites, crit_chance,
                                    scale=c_data["scale"], scale_factor=self.scale_factor)
                 elif c_type == "gold":
@@ -1119,6 +1540,8 @@ class GameController:
 
             self.ui.update_button("silver_crit_upgrade", self.upgrade_prices["silver_crit_upgrade"],
                                   level=self.silver_crit_level)
+            self.ui.update_button("silver_crit_chance_upgrade", self.upgrade_prices["silver_crit_chance_upgrade"],
+                                  level=self.silver_crit_chance_level)
             self.ui.update_button("auto_flip_upgrade", self.upgrade_prices["auto_flip_upgrade"],
                                   level=self.auto_flip_level)
 
@@ -1185,12 +1608,14 @@ class GameController:
 
         self.meteor_unlocked = False
         self.meteor_cooldown_level = 0
+        self.beetle_stash = 0
 
         self.balance._value = 0
         self.silver_crit_level = 1
         self.auto_flip_level = 0
         self.bronze_coin_level = 1
         self.silver_coin_level = 0
+        self.silver_crit_chance_level = 1
         self.gold_coin_level = 0
 
         self.bronze_value_level = 0
@@ -1206,6 +1631,15 @@ class GameController:
         self.has_gold_coin = False
         self.grab_purchased = False
         self.gold_explosion_unlocked = False
+
+        # === СБРОС КОМБО ===
+        self.combo_unlocked = False
+        self.combo_value = 1.0
+        self.combo_limit_level = 1
+        self.combo_limit = self.combo_base_limit
+        self.combo_watch_timer = 0.0
+        self.combo_visuals = []
+        # ===================
 
         self.tornado = None
         self.tornado_unlocked = False
@@ -1230,6 +1664,7 @@ class GameController:
         self.upgrade_prices = {
             "buy_bronze_coin": 50,
             "silver_crit_upgrade": 500,
+            "silver_crit_chance_upgrade": 500,
             "grab_upgrade": 500,
             "gold_explosion_upgrade": 2000,
             "wisp_spawn": 5000,
@@ -1251,11 +1686,16 @@ class GameController:
             "tornado_cooldown_upgrade": 2000,
             "fuse_to_silver": 0,
             "fuse_to_gold": 0,
+            # Добавляем кнопки комбо в цены сброса
+            "unlock_combo": 10000,
+            "upgrade_combo_limit": 2000,
         }
 
         self.ui.update_button("buy_bronze_coin", 50, level=1)
-
+        self.ui.update_button("silver_crit_chance_upgrade", 500, level=1)
         self.ui.update_button("silver_crit_upgrade", 500, level=1)
+        self.ui.update_button("unlock_combo", 10000, level=0)
+        self.ui.update_button("upgrade_combo_limit", 2000, level=1) # Сброс кнопки комбо
         self.ui.update_button("wisp_spawn", 5000, level=0)
         self.ui.update_button("spawn_zone_2", 10000, level=0)
         self.ui.update_button("spawn_zone_5", 50000, level=0)
@@ -1301,13 +1741,31 @@ class GameController:
         if self.sound_manager.beetle_dead_sound:
             arcade.play_sound(self.sound_manager.beetle_dead_sound)
 
-        current_balance = self.balance.get()
-        new_balance = int(current_balance * 1.2)
+        # --- НОВАЯ ЛОГИКА НАГРАДЫ ---
+        # Выдаем х5 от того, что накопилось
+        reward = int(self.beetle_stash * 5)
+        self.balance.add(reward)
 
-        self.balance._value = new_balance
-        print(f"DEBUG: Beetle killed! Balance {current_balance} -> {new_balance}")
-
+        # Сбрасываем таймеры жука
+        self.beetle_stash = 0
         self.beetle.start_death()
+
+        # Эффект текста
+        print(f"DEBUG: Beetle killed! Reward: {reward}")
+
+        # Спавним красивый текст награды над жуком
+        if reward > 0:
+            # Форматируем число, чтобы не было слишком длинным
+            from logic.economy.balance import Balance  # Импорт если нужно, но можно просто сформатировать
+            reward_str = f"+{reward}"
+            # Если число большое, используем формат (1K, 1M)
+            if reward > 1000:
+                reward_str = f"+{reward / 1000:.1f}K"
+            if reward > 1000000:
+                reward_str = f"+{reward / 1000000:.1f}M"
+
+            self.create_floating_text(reward_str, self.beetle.center_x, self.beetle.top + 20, (255, 255, 255, 255))
+        # ------------------------------
 
     def spawn_beetle_initial(self):
         self.beetle_respawn_interval = random.uniform(10.0, 60.0)
@@ -1424,3 +1882,97 @@ class GameController:
                 'decay_speed': 2.5
             }
             self.particles.append(particle_data)
+
+    def _get_coin_color(self, coin):
+        """Возвращает цвет монеты для текста"""
+        if isinstance(coin, LuckyCoin):
+            return (50, 255, 50, 255)
+        elif isinstance(coin, CursedCoin):
+            return (100, 50, 50, 255)
+        elif isinstance(coin, GoldCoin):
+            return arcade.color.GOLD
+        elif isinstance(coin, SilverCoin):
+            return arcade.color.LIGHT_GRAY
+        else: # Bronze
+            return arcade.color.BRASS
+
+    def create_floating_text(self, text: str, x: float, y: float, color: tuple, coin=None) -> None:
+        """Создает всплывающую цифру (ОПТИМИЗИРОВАННО через arcade.Text)"""
+
+        # Создаем объект текста один раз
+        # Начальный цвет без альфы, так как мы будем менять её в update
+        text_obj = arcade.Text(
+            text,
+            x, y,
+            color,  # Передаем полный цвет, альфу будем менять отдельно
+            font_size=int(20 * self.scale_factor),
+            anchor_x="center", anchor_y="bottom",
+            font_name="RuneScape-ENA"
+        )
+
+        self.floating_texts.append({
+            'text_obj': text_obj,  # Ссылка на объект текста
+            'life': 1.5,  # Время жизни в секундах
+            'base_color': color,  # Исходный цвет (для реанимации, если нужно)
+            'linked_coin': coin,  # Если привязать к монете
+            'vx': 30,  # Скорость по X (пользовательский эффект из draw)
+            'vy': 50  # Скорость по Y
+        })
+
+    def create_combo_fire_particles(self) -> None:
+        """Создает эффект огня над цифрами комбо при x10"""
+        # Позиция текста (как в draw)
+        combo_x = 60 * self.scale_factor
+        combo_y = self.height - (60 * self.scale_factor)
+
+        # --- ИСПРАВЛЕНИЕ ПОЗИЦИИ ---
+        # Сдвигаем центр спавна вправо, чтобы частицы летели из центра текста ("x10.0")
+        # Текст примерно 80-100 пикселей. Смещаем базу на 60px вправо.
+        spawn_center_offset = 60 * self.scale_factor
+        # ---------------------------
+
+        # Создаем 1-2 частицы за раз (щадящий режим для CPU)
+        for _ in range(2):
+            # Цвет: от ярко-оранжевого до темно-красного
+            red_comp = 255
+            green_comp = random.randint(0, 100)
+            color = (red_comp, green_comp, 0, 200)
+
+            # Летим вверх
+            angle = random.uniform(4.5, 5.0)
+            speed = random.uniform(20, 60)
+            size = random.uniform(3, 6)
+
+            # Немного рандома по X вокруг текста (учитывая сдвиг)
+            offset_x = random.uniform(-40, 40)
+            offset_y = random.uniform(-10, 10)
+
+            particle_data = {
+                'x': combo_x + spawn_center_offset + offset_x,
+                'y': combo_y + offset_y,
+                'vx': math.cos(angle) * speed,
+                'vy': math.sin(angle) * speed,
+                'life': 0.8,
+                'color': color,
+                'size': size,
+                'decay_speed': 2.0
+            }
+            self.particles.append(particle_data)
+
+    def _add_income(self, amount: int) -> None:
+        """
+        Обрабатывает полученный доход.
+        Если жук жив: отдает 10% игроку, 90% складывает в stash.
+        Если жука нет: отдает 100% игроку.
+        """
+        if amount <= 0: return
+
+        if self.beetle:
+            # Жук жив: игрок получает только 10%
+            kept = int(amount * 0.1)
+            stolen = amount - kept  # Остальное воруем
+            self.balance.add(kept)
+            self.beetle_stash += stolen
+        else:
+            # Жука нет: игрок получает всё
+            self.balance.add(amount)

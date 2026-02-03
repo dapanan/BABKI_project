@@ -139,6 +139,11 @@ class GameWindow(arcade.Window):
         self.menu_coins = arcade.SpriteList()
         self._spawn_menu_coins()
 
+        # === ЗАГРУЗКА ФОНОВ ДЛЯ СПРАВКИ ===
+        self.help_bg_lucky = self._load_help_image("view/ui/background/willow.jpg")
+        self.help_bg_cursed = self._load_help_image("view/ui/background/alt.jpg")
+        # ============================================
+
         # Текст и кнопки
         cx = screen_width // 2
         cy = screen_height // 2
@@ -282,27 +287,82 @@ class GameWindow(arcade.Window):
 
     def _draw_menu(self):
         # 1. Монетки на фоне
+        self._handle_menu_collisions()
         self.menu_coins.draw()
 
         # 2. Если открыто окно справки
         if self.showing_help:
-            # Полупрозрачный фон затемнения
+            # Затемнение всего фона игры
             arcade.draw_lrbt_rectangle_filled(0, screen_width, 0, screen_height, (0, 0, 0, 150))
 
-            # Серый прямоугольник окна
+            # Рамка и фон окна
             arcade.draw_lrbt_rectangle_filled(
                 self.help_x, self.help_x + self.help_w,
                 self.help_y, self.help_y + self.help_h,
                 arcade.color.DARK_GRAY
             )
-            # Белая рамка
             arcade.draw_lrbt_rectangle_outline(
                 self.help_x, self.help_x + self.help_w,
                 self.help_y, self.help_y + self.help_h,
                 arcade.color.WHITE, 4
             )
 
-            # Текст примера
+            # === ОТРИСОВКА КАРТИНОК ФОНА ===
+            half_w = self.help_w / 2
+            h = self.help_h
+
+            # --- ЛЕВАЯ КАРТИНКА (Lucky / willow) ---
+            if self.help_bg_lucky:
+                scale_l = min(half_w / self.help_bg_lucky.width, h / self.help_bg_lucky.height)
+                sprite_l = arcade.Sprite(self.help_bg_lucky, scale=scale_l)
+                sprite_l.center_x = self.help_x + half_w / 2
+                sprite_l.center_y = self.help_y + h / 2
+
+                # === ИСПРАВЛЕНИЕ: Используем arcade.draw_sprite() ===
+                arcade.draw_sprite(sprite_l)
+                # ====================================================
+
+                # Затемнение 30%
+                arcade.draw_lrbt_rectangle_filled(
+                    self.help_x, self.help_x + half_w,
+                    self.help_y, self.help_y + h,
+                    (0, 0, 0, 76)
+                )
+            else:
+                # ЗАГЛУШКА (Зеленый квадрат)
+                arcade.draw_lrbt_rectangle_filled(
+                    self.help_x, self.help_x + half_w,
+                    self.help_y, self.help_y + h,
+                    (50, 100, 50, 255)
+                )
+
+            # --- ПРАВАЯ КАРТИНКА (Cursed / alt) ---
+            if self.help_bg_cursed:
+                scale_c = min(half_w / self.help_bg_cursed.width, h / self.help_bg_cursed.height)
+                sprite_c = arcade.Sprite(self.help_bg_cursed, scale=scale_c)
+                sprite_c.center_x = self.help_x + half_w * 1.5
+                sprite_c.center_y = self.help_y + h / 2
+
+                # === ИСПРАВЛЕНИЕ: Используем arcade.draw_sprite() ===
+                arcade.draw_sprite(sprite_c)
+                # ====================================================
+
+                # Затемнение 30%
+                arcade.draw_lrbt_rectangle_filled(
+                    self.help_x + half_w, self.help_x + self.help_w,
+                    self.help_y, self.help_y + h,
+                    (0, 0, 0, 76)
+                )
+            else:
+                # ЗАГЛУШКА (Красный квадрат)
+                arcade.draw_lrbt_rectangle_filled(
+                    self.help_x + half_w, self.help_x + self.help_w,
+                    self.help_y, self.help_y + h,
+                    (100, 0, 0, 255)
+                )
+            # ===================================
+
+            # 3. Текст поверх
             help_text = arcade.Text(
                 "текст для примера",
                 screen_width // 2, screen_height // 2,
@@ -314,7 +374,7 @@ class GameWindow(arcade.Window):
             )
             help_text.draw()
 
-            # Крестик закрытия
+            # 4. Крестик закрытия
             close_btn_size = self.close_btn_size
             close_left = self.help_x + self.help_w - close_btn_size
             close_right = self.help_x + self.help_w
@@ -331,12 +391,11 @@ class GameWindow(arcade.Window):
                              anchor_x="center", anchor_y="center")
 
         else:
-            # Если окно закрыто - рисуем обычное меню
+            # 5. Если окно закрыто - рисуем обычное меню
             self.title_text.draw()
 
             mx, my = self.mouse_position
 
-            # Проверки наведения для кнопок
             p_hover = (self.btn_play["x"] - self.btn_play["w"] / 2 < mx < self.btn_play["x"] + self.btn_play[
                 "w"] / 2 and
                        self.btn_play["y"] - self.btn_play["h"] / 2 < my < self.btn_play["y"] + self.btn_play[
@@ -352,7 +411,6 @@ class GameWindow(arcade.Window):
                        self.btn_exit["y"] - self.btn_exit["h"] / 2 < my < self.btn_exit["y"] + self.btn_exit[
                            "h"] / 2)
 
-            # Список кнопок (Теперь включает Help)
             btns = [
                 (self.btn_play, p_hover, self.btn_play_text),
                 (self.btn_help, h_hover, self.btn_help_text),
@@ -374,7 +432,6 @@ class GameWindow(arcade.Window):
                     arcade.color.WHITE, 2
                 )
                 text_obj.draw()
-
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int):
         self.mouse_position = (x, y)
         if self.state == STATE_GAME:
@@ -442,3 +499,9 @@ class GameWindow(arcade.Window):
         if self.state == STATE_GAME:
             self.game.save_game()
         super().on_close()
+
+    def _load_help_image(self, path: str):
+        if os.path.exists(path):
+            return arcade.load_texture(path)
+        print(f"WARNING: Help background not found: {path}")
+        return None

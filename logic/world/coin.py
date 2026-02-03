@@ -224,7 +224,8 @@ class Coin:
                 self.radius,
                 (0, 0, 0, 50)
             )
-        arcade.draw_sprite(self.sprite)
+        else:
+            arcade.draw_sprite(self.sprite)
 
     def hit_by_coin(self, source_coin, nx, ny) -> None:
         self.is_moving = True

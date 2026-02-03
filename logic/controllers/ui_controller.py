@@ -75,6 +75,8 @@ class UIController:
             ]),
 
             _UiGroupStub("Серебряная монетка", [
+                _UiButtonStub("silver_crit_chance_upgrade", "Шанс крита", "Шанс крита", 500, is_one_time=False,
+                              level=1),
                 _UiButtonStub("silver_crit_upgrade", "Крит серебра", "Крит серебра", 500, is_one_time=False, level=1),
 
                 _UiButtonStub("silver_value_upgrade", "Цена серебра x2", "Цена серебра x2", 5000, is_one_time=False,
@@ -86,6 +88,11 @@ class UIController:
                 _UiButtonStub("grab_upgrade", "ПКМ Золото", "ПКМ Золото", 500, is_one_time=True),
                 _UiButtonStub("gold_value_upgrade", "Цена золота x2", "Цена золота x2", 10000, is_one_time=False,
                               level=0),
+            ]),
+
+            _UiGroupStub("Комбо", [
+                _UiButtonStub("unlock_combo", "Открыть комбо", "Открыть комбо", 10000, is_one_time=True),
+                _UiButtonStub("upgrade_combo_limit", "Лимит комбо", "Лимит комбо", 2000, is_one_time=False, level=1),
             ]),
 
             _UiGroupStub("Общее для монеток", [
@@ -283,7 +290,9 @@ class UIController:
 
                     # === ПРОВЕРКА МАКСИМАЛЬНОГО УРОВНЯ ===
                     if b.max_level > 0 and b.level >= b.max_level:
-                        b.title = f"{b.base_name} (уровень макс.)"
+                        # Было: (уровень макс.)
+                        # Стало: (Макс.)
+                        b.title = f"{b.base_name} (Макс.)"
                         self._enabled[b.upgrade_id] = False
                         continue
                     # ====================================
