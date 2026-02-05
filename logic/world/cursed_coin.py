@@ -29,7 +29,7 @@ class CursedCoin(Coin):
             self.last_outcome_value = 2
             self.sprite.texture = self.sprites.get("heads")
 
-            self.lifetime = 2.0 # Даем время полюбоваться х100
+            self.lifetime = 2.0
             self.bankruptcy_triggered = False
 
         else:
@@ -39,7 +39,7 @@ class CursedCoin(Coin):
 
             # Взрывается и забирает баланс
             self.bankruptcy_triggered = True
-            self.lifetime = 0.5 # Чуть дольше, чтобы увидели взрыв
+            self.lifetime = 0.5
 
         self.is_moving = False
         self.anim = []

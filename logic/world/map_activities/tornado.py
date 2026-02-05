@@ -27,7 +27,6 @@ class Tornado(arcade.Sprite):
         self.frame_index = 0
         self.anim_timer = 0.0
 
-        # ИСПРАВЛЕНИЕ: Масштабируем физику торнадо
         self.pull_radius = (world_width / 6.0) * world_scale
         self.pull_strength = 1000.0 * world_scale
         self.spin_strength = 500.0 * world_scale
@@ -81,7 +80,6 @@ class Tornado(arcade.Sprite):
             pull_force = self.pull_strength * progress
             spin_force = self.spin_strength * progress
 
-            # Применяем силу
             coin.vx += (nx * pull_force - ny * spin_force) * dt
             coin.vy += (ny * pull_force + nx * spin_force) * dt
 
@@ -92,26 +90,18 @@ class Tornado(arcade.Sprite):
             if coin.tornado_hit:
                 coin.tornado_hit = False
 
-                # === НОВАЯ ФИЗИКА: СИЛЬНАЯ ИНЕРЦИЯ + СКОЛЬЖЕНИЕ ===
-                # 1. Не сбрасываем скорость до 0, а оставляем 80% (высокая инерция)
                 coin.vx *= 0.8
                 coin.vy *= 0.8
 
-                # 2. Переключаем монетку в режим "на земле" (is_moving = False)
-                # В этом режиме в Coin.update включится логика скольжения (low friction)
                 coin.is_moving = False
                 coin.anim = []
                 coin.landed = True
                 coin.just_landed = True
                 coin.manual_override = False
 
-                # 3. Включаем таймер скольжения на 1.5 секунды
-                # (Это заставит монетку скользить далеко)
                 coin.tornado_exit_time = 1.5
 
-                # 4. Устанавливаем текстуру
                 if coin.fixed_outcome_texture:
                     coin.sprite.texture = coin.fixed_outcome_texture
                 else:
                     coin.sprite.texture = coin.sprites.get("heads")
-                # ================================================

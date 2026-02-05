@@ -1,2 +1,3 @@
-arcade
-Pillow
+arcade==3.3.3
+Pillow==11.3.0
+pyinstaller==6.16.0

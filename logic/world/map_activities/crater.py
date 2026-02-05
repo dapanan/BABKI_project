@@ -20,10 +20,8 @@ class Crater(arcade.Sprite):
         self.timer += dt
 
         if self.is_fading:
-            # Плавно меняем прозрачность
-            progress = self.timer / self.life_duration  # Будет > 1.0
+            progress = self.timer / self.life_duration
 
-            # Сколько прошло времени в фазе исчезновения
             fade_time = self.timer - self.life_duration
             alpha_ratio = 1.0 - (fade_time / self.fade_duration)
 
@@ -33,13 +31,13 @@ class Crater(arcade.Sprite):
             self.color = (int(r), int(g), int(b), int(255 * alpha_ratio))
 
             if alpha_ratio <= 0:
-                return False  # Умер
+                return False
         else:
             # Просто тикаем время жизни
             if self.timer >= self.life_duration:
                 self.is_fading = True
 
-        return True  # Жив
+        return True
 
     def check_collision(self, coin) -> bool:
         """AABB Collision для прямоугольного кратера"""
@@ -49,7 +47,6 @@ class Crater(arcade.Sprite):
         half_w = self.width / 2
         half_h = self.height / 2
 
-        # Проверяем попадание центра монетки в прямоугольник
         if (self.center_x - half_w <= cx <= self.center_x + half_w) and \
                 (self.center_y - half_h <= cy <= self.center_y + half_h):
             return True

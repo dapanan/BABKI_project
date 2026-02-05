@@ -14,7 +14,7 @@ class Wisp(arcade.Sprite):
         self.center_x = x
         self.center_y = y
         self.scale = scale
-        self.scale_factor = scale_factor # <--- Сохраняем
+        self.scale_factor = scale_factor
 
         self.speed = speed
         angle = random.uniform(0, 2 * math.pi)
@@ -74,17 +74,11 @@ class Wisp(arcade.Sprite):
     def _handle_coin_collisions(self, coins: list, grabbed_coin) -> None:
         for coin in coins:
 
-            # Игнорируем зажатую монетку
             if coin is grabbed_coin:
                 continue
 
-            # Игнорируем монетку с иммунитетом
             if coin.wisp_immunity_timer > 0:
                 continue
-
-            # === ИСПРАВЛЕНИЕ: Висп не трогает ЛЕТЯЩИЕ монеты ===
-            # Это нужно, чтобы монетки, выброшенные торнадо или взрывом,
-            # продолжали лететь, не цепляясь за висп.
             if coin.is_moving:
                 continue
             # =========================================================
@@ -103,7 +97,6 @@ class Wisp(arcade.Sprite):
                     coin.wisp_immunity_timer = 3.0
 
     def upgrade_speed(self, amount: float):
-        # ИСПРАВЛЕНИЕ: Масштабируем добавку скорости
         self.speed += amount * self.scale_factor
         current_speed_vec = math.sqrt(self.vx ** 2 + self.vy ** 2)
         if current_speed_vec > 0:
@@ -119,6 +112,5 @@ class Wisp(arcade.Sprite):
         else:
             self.scale *= multiplier
 
-        # Пересчитываем радиус на основе новой шкалы
         s_val = self.scale[0] if isinstance(self.scale, tuple) else self.scale
         self.radius = (self.texture.width * s_val * self.hitbox_factor) / 2

@@ -8,23 +8,18 @@ class GoldCoin(Coin):
             x: float,
             y: float,
             sprites: dict,
+            value: int = 100,  # <--- ДОБАВЛЯЕМ АРГУМЕНТ value
             scale: float = 1.5,
-            scale_factor: float = 1.0 # <--- Добавили аргумент
+            scale_factor: float = 1.0
     ) -> None:
         super().__init__(
             x=x,
             y=y,
             sprites=sprites,
-            value=5,
+            value=value,  # <--- ПЕРЕДАЕМ value ВМЕСТО 100
             scale=scale,
-            scale_factor=scale_factor # <--- Передали в родительский класс
+            scale_factor=scale_factor
         )
-        # Chance здесь 0.0, управляется в game_controller через unlock
 
     def land(self) -> None:
-        # ВАЖНО: Сначала вызываем базовый land()
-        # Он очистит список жертв, остановит монетку и запустит логику кубика (переворот)
         super().land()
-
-        # Дополнительная логика для золота после super().land()
-        # (например, если бы мы хотели добавить особые эффекты крита для золота)

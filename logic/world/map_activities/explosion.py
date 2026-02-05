@@ -17,9 +17,9 @@ class Explosion(arcade.Sprite):
 
         self.frame_index = 0
         self.timer = 0.0
-        self.anim_speed = 0.05  # Скорость кадров (0.05 сек)
+        self.anim_speed = 0.05
 
-        self.alive = True  # Флаг: жива ли анимация
+        self.alive = True
 
     def update(self, dt: float) -> bool:
         """Возвращает False если анимация закончилась"""
@@ -31,7 +31,6 @@ class Explosion(arcade.Sprite):
             if self.frame_index < len(self.frames):
                 self.texture = self.frames[self.frame_index]
             else:
-                # Анимация кончилась -> убиваем объект
                 self.alive = False
                 return False
 

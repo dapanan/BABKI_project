@@ -11,12 +11,12 @@ class Coin:
             sprites: dict,
             value: int,
             scale: float = 1.0,
-            scale_factor: float = 1.0  # <--- Добавили аргумент масштаба мира
+            scale_factor: float = 1.0
     ) -> None:
         self.value = value
         self.sprites = sprites
         self.scale = scale
-        self.world_scale = scale_factor  # <--- Сохраняем для физики
+        self.world_scale = scale_factor
 
         self.sprite = arcade.Sprite()
         self.sprite.center_x = x
@@ -32,9 +32,7 @@ class Coin:
         self.is_fading = False
 
 
-        # === ИСПРАВЛЕНИЕ ДЛЯ SPATIAL HASH ===
         self.sprite.coin = self
-        # ===========================================
 
         # Физика
         self.vx = 0.0
@@ -63,24 +61,20 @@ class Coin:
 
         self.manual_override = False
 
-        self.MAX_SPEED = 2500.0 * self.world_scale  # <--- Масштабируем макс. скорость
+        self.MAX_SPEED = 2500.0 * self.world_scale
 
     def update(self, dt: float, width: int, height: int, nearby_coins: list) -> None:
 
-        # === ЛОГИКА УГАСАНИЯ (DISAPPEAR) ===
-        # Проверяем, что lifetime существует и это число, больше нуля
+        # === ЛОГИКА УГАСАНИЯ===
         if self.lifetime is not None and self.lifetime > 0:
             self.lifetime -= dt
-            # Если начали угасать, уменьшаем альфа
             if self.lifetime <= self.fade_duration:
                 self.is_fading = True
                 ratio = max(0, self.lifetime / self.fade_duration)
                 self.sprite.alpha = int(255 * ratio)
 
-            # Если время вышло, помечаем на удаление (в контроллере)
             if self.lifetime <= 0:
-                return  # Не обновляем физику, если "мертв"
-        # Список nearby_coins приходит из GameController, он уже оптимизирован через Spatial Hash
+                return
         from logic.world.gold_coin import GoldCoin
 
         if self.wisp_immunity_timer > 0:
@@ -88,7 +82,6 @@ class Coin:
             if self.wisp_immunity_timer < 0:
                 self.wisp_immunity_timer = 0
 
-        # --- БЛОК 1: ЛЕТАЮЩАЯ МОНЕТКА (is_moving = True) ---
         if self.is_moving:
             self.sprite.center_x += self.vx * dt
             self.sprite.center_y += self.vy * dt
@@ -98,11 +91,9 @@ class Coin:
 
             # === ЛОГИКА В ТОРНАДО ===
             if self.tornado_hit:
-                # НЕТ СОПРОТИВЛЕНИЯ ВОЗДУХА (1.0)
                 self.vx *= 1.0
                 self.vy *= 1.0
 
-                # Анимация (меняем спрайт по кругу)
                 self.anim_timer += dt
                 if self.anim_timer >= self.anim_speed:
                     self.anim_timer = 0
@@ -123,12 +114,9 @@ class Coin:
                     if self.anim and self.anim_index < len(self.anim):
                         self.sprite.texture = self.anim[self.anim_index]
                     else:
-                        # Анимация кончилась -> Падение
                         self.land()
 
-            # Сбор жертв взрыва
             if self.explosion_chance > 0:
-                # Используем nearby_coins для оптимизации
                 for other in nearby_coins:
                     if other is not self and not other.is_moving:
                         if isinstance(other, GoldCoin):
@@ -147,13 +135,10 @@ class Coin:
 
         # --- БЛОК 2: ЛЕЖАЩАЯ МОНЕТКА (is_moving = False) ---
         else:
-            # === ИСПРАВЛЕНИЕ ТРЕНИЯ ПОСЛЕ ТОРНАДО ===
-            # Если монетка только что вышла из торнадо, она очень скользкая
             current_friction = 0.93
             if self.tornado_exit_time > 0:
-                current_friction = 0.985  # Очень низкое трение (скользит как по льду)
+                current_friction = 0.985
                 self.tornado_exit_time -= dt
-            # ==========================================
 
             # === В ТОРНАДО (Скользит) ===
             if self.tornado_hit:
@@ -162,7 +147,7 @@ class Coin:
                 self._clamp_speed()
             # === ОБЫЧНАЯ ЗЕМЛЯ ===
             else:
-                self.vx *= current_friction  # Используем переменную current_friction
+                self.vx *= current_friction
                 self.vy *= current_friction
 
                 if abs(self.vx) < 0.5: self.vx = 0
@@ -246,7 +231,6 @@ class Coin:
 
     def hit_by_coin(self, source_coin, nx, ny) -> None:
         self.is_moving = True
-        # ИСПРАВЛЕНИЕ: Скорость от столкновения тоже масштабируется
         self.vx = nx * (600 * self.world_scale)
         self.vy = ny * (600 * self.world_scale)
         self._select_flying_animation()
@@ -262,8 +246,6 @@ class Coin:
 
         length = math.sqrt(dx * dx + dy * dy)
         dead_zone = self.radius * 0.2
-
-        # ИСПРАВЛЕНИЕ: Базовая скорость зависит от масштаба экрана
         base_speed = 600 * self.world_scale
 
         if length < dead_zone:
@@ -314,10 +296,8 @@ class Coin:
     def _handle_collisions(self, nearby_coins):
         for other in nearby_coins:
             if other is not self:
-                # === ИСПРАВЛЕНИЕ: Летящие монетки не сталкиваются с остальными ===
                 if other.is_moving:
                     continue
-                # ================================================================
 
                 dx = self.sprite.center_x - other.sprite.center_x
                 dy = self.sprite.center_y - other.sprite.center_y

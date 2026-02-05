@@ -1,20 +1,26 @@
 from __future__ import annotations
 import os
+import sys
+import shutil
 import arcade
 from PIL import Image, ImageDraw, ImageEnhance, ImageOps
 
 
 class AssetManager:
     def __init__(self) -> None:
-        self.base_dir = os.path.join(os.getcwd(), "view")
-        if not os.path.exists(self.base_dir):
+        if getattr(sys, 'frozen', False):
+            self.base_dir = os.path.join(sys._MEIPASS, "view")
+        else:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(os.path.dirname(script_dir))
             self.base_dir = os.path.join(project_root, "view")
-        if not os.path.exists(self.base_dir):
-            self.base_dir = os.getcwd()
+        # -----------------------------------------
 
         print(f"DEBUG: Assets base directory: {self.base_dir}")
+
+        if not os.path.exists(self.base_dir):
+            print(f"FATAL ERROR: View directory not found at {self.base_dir}")
+            self.base_dir = os.getcwd()
 
         self._loaded = False
 
@@ -35,18 +41,16 @@ class AssetManager:
         self._load_coin_type("bronze_coin", self.bronze_coin_sprites, arcade.color.BRASS)
         self._load_coin_type("silver_coin", self.silver_coin_sprites, arcade.color.LIGHT_GRAY)
         self._load_coin_type("gold_coin", self.gold_coin_sprites, arcade.color.GOLD)
-        # === ЗАГРУЗКА СПЕЦИАЛЬНЫХ МОНЕТ (TINTING) ===
-        # Lucky Coin (Мягкий зеленый оттенок)
+
         print("Generating Lucky Coin sprites...")
         self._generate_tinted_coins("lucky_coin", self.gold_coin_sprites, (100, 200, 100, 200))
 
-        # Cursed Coin (Темно-серый оттенок)
-        print("Generating Cursed Coin sprites...")  # <--- Исправил текст
+        print("Generating Cursed Coin sprites...")
         self._generate_tinted_coins("cursed_coin", self.gold_coin_sprites,
-                                    (40, 40, 40, 180))  # <--- Исправил название на "cursed_coin"
+                                    (40, 40, 40, 180))
         self._load_meteor_stuff()
         self._load_tornado_stuff()
-        self._load_wisp_sprites()  # <--- Загрузка виспа
+        self._load_wisp_sprites()
         self._load_beetle_sprites()
         self._loaded = True
 
@@ -75,7 +79,6 @@ class AssetManager:
         """Загружает спрайты жука из папки view/sprites/beetle"""
         beetle_dir = os.path.join(self.base_dir, "sprites", "beetle")
 
-        # Структура: {"up": [tex1, ...], "down": [...], ...}
         sprites_dict = {"up": [], "down": [], "left": [], "right": []}
 
         if not os.path.exists(beetle_dir):
@@ -83,8 +86,6 @@ class AssetManager:
             self.beetle_sprites = sprites_dict
             return
 
-        # Пробуем разные варианты имен папок (с префиксом beetle_ и без)
-        # В твоем случае: beetle_up, beetle_down...
         folder_map = {
             "up": ["up", "beetle_up"],
             "down": ["down", "beetle_down"],
@@ -105,7 +106,7 @@ class AssetManager:
                             )
                     if sprites_dict[direction]:
                         loaded = True
-                        break  # Если нашли в одной папке, вторую не ищем
+                        break
 
             if loaded:
                 print(f"  -> Loaded {len(sprites_dict[direction])} frames for direction {direction}")
@@ -123,6 +124,7 @@ class AssetManager:
             "font_name": "Arial"
         }
 
+        # 1. Загрузка кнопок
         buttons_dir = os.path.join(ui_base_dir, "buttons")
         if os.path.exists(buttons_dir):
             self.ui_assets["btn_normal"] = arcade.load_texture(os.path.join(buttons_dir, "normal.png"))
@@ -132,20 +134,15 @@ class AssetManager:
         else:
             print(f"WARNING: UI buttons folder not found: {buttons_dir}")
 
-        font_dir = os.path.join(self.base_dir, "ui", "fonts")
+        font_filename = "RuneScape-ENA.ttf"
 
-        print("-" * 50)
-        print(f"DEBUG: Searching for fonts in: {font_dir}")
-        if os.path.exists(font_dir):
-            font_file = os.path.join(font_dir, "RuneScape-ENA.ttf")
-            if os.path.exists(font_file):
-                self.ui_assets["font_name"] = font_file
-                print(">>> SUCCESS: Custom 'RuneScape-ENA' font loaded!")
-            else:
-                print(">>> WARNING: RuneScape-ENA.ttf NOT FOUND!")
+        font_path = os.path.join(ui_base_dir, "fonts", font_filename)
+
+        if os.path.exists(font_path):
+            self.ui_assets["font_name"] = font_path
+            print(f">>> SUCCESS: Font found at: {font_path}")
         else:
-            print(f">>> ERROR: Folder 'fonts' does not exist in {ui_base_dir}")
-        print("-" * 50)
+            print(f">>> WARNING: Font file NOT FOUND at: {font_path}")
 
     def _load_coin_type(self, folder_name: str, target_dict: dict, placeholder_color) -> None:
         sprites_dir = os.path.join(self.base_dir, "sprites", folder_name)
@@ -186,7 +183,6 @@ class AssetManager:
             "down": load_dir("down"),
             "left": load_dir("left"),
             "right": load_dir("right"),
-            # Добавляем диагональные анимации
             "up_left": load_dir("up_left"),
             "up_right": load_dir("up_right"),
             "down_left": load_dir("down_left"),
@@ -217,7 +213,6 @@ class AssetManager:
         return self._loaded
 
     def _load_meteor_stuff(self) -> None:
-        # 1. Загрузка Метеорита (falling)
         meteor_dir = os.path.join(self.base_dir, "sprites", "meteor")
         if os.path.exists(meteor_dir):
             files = sorted(os.listdir(meteor_dir))
@@ -228,7 +223,6 @@ class AssetManager:
         else:
             print(f"  -> WARNING: Meteor folder not found at {meteor_dir}")
 
-        # 2. Загрузка Кратера (crater)
         crater_path = os.path.join(self.base_dir, "sprites", "crater", "crater.png")
         if not os.path.exists(crater_path):
             crater_path = os.path.join(self.base_dir, "sprites", "crater", "Crater.png")  # Другой вариант регистра
@@ -239,8 +233,6 @@ class AssetManager:
         else:
             print(f"  -> WARNING: Crater texture not found at {crater_path}")
 
-        # 3. Загрузка Взрыва (Explosion) - ИСПРАВЛЕННЫЙ ПУТЬ
-        # Ищем в папке view/sprites/Explosion
         explosion_dir = os.path.join(self.base_dir, "sprites", "Explosion")
 
         if os.path.exists(explosion_dir):
@@ -253,7 +245,6 @@ class AssetManager:
             print(f"  -> WARNING: Explosion folder not found at {explosion_dir}")
 
     def _load_tornado_stuff(self):
-        # Загрузка спрайтов Торнадо
         tornado_dir = os.path.join(self.base_dir, "sprites", "tornado")
         if os.path.exists(tornado_dir):
             files = sorted(os.listdir(tornado_dir))
@@ -268,13 +259,11 @@ class AssetManager:
         """Создает копии спрайтов с наложенным цветом"""
         target_dict = {}
 
-        # Обрабатываем Heads и Tails (одиночные текстуры)
         for key in ["heads", "tails"]:
             if key in source_sprites:
                 source_tex = source_sprites[key]
                 target_dict[key] = self._create_tinted_texture(source_tex, tint_color)
 
-        # Обрабатываем анимации (списки)
         for key in ["up", "down", "left", "right", "up_left", "up_right", "down_left", "down_right"]:
             if key in source_sprites:
                 source_list = source_sprites[key]
@@ -295,30 +284,19 @@ class AssetManager:
         if img is None:
             return source_texture
 
-        # 1. Разделяем картинку на каналы (R, G, B, Alpha)
-        # Это позволяет сохранить форму монетки (прозрачные пиксели)
         if img.mode == 'RGBA':
             r, g, b, a = img.split()
-            # Объединяем только цвет, без прозрачности, и переводим в Ч/Б
             rgb_img = Image.merge('RGB', (r, g, b))
             gray = rgb_img.convert('L')
         else:
-            # Если вдруг картинка без прозрачности, просто красим всё
             gray = img.convert('L')
             a = None
 
-        # 2. Берем цвет для окраски
         r_tint, g_tint, b_tint, _ = tint_color
 
-        # 3. Красим черно-белую картинку в нужный цвет
-        # Black - это тени, White - это светлые части
         colored = ImageOps.colorize(gray, black=(20, 20, 20), white=(r_tint, g_tint, b_tint))
 
-        # 4. Переводим результат в RGBA
         colored_rgba = colored.convert('RGBA')
-
-        # 5. ВОЗВРАЩАЕМ ПРОЗРАЧНОСТЬ!
-        # Мы берем альфу (форму) из оригинала и накладываем на новую картинку
         if a:
             colored_rgba.putalpha(a)
 

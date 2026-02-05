@@ -29,9 +29,8 @@ class Beetle(arcade.Sprite):
         self.center_y = y
 
         # ПАРАМЕТРЫ ЖУКА
-        # ИСПРАВЛЕНИЕ: Визуальный размер зависит от масштаба
+
         self.scale = 0.3 * scale_factor
-        # ИСПРАВЛЕНИЕ: Скорость зависит от масштаба
         self.speed = 80.0 * scale_factor
 
         # Логика движения
@@ -82,21 +81,18 @@ class Beetle(arcade.Sprite):
 
         # 1. ЛОГИКА СМЕРТИ
         if self.is_dying:
-            # ЗАЩИТА ОТ ЛАГОВ: Ограничиваем dt, чтобы анимация не проскочила
             safe_dt = min(dt, 0.1)
 
             self.fade_timer += safe_dt
             alpha = 255 * (1.0 - (self.fade_timer / self.fade_duration))
             if alpha < 0: alpha = 0
-
-            # Меняем прозрачность
             r, g, b, _ = self.color
             self.color = (int(r), int(g), int(b), int(alpha))
 
             if self.fade_timer >= self.fade_duration:
-                return False  # СМЕРТЬ
+                return False
 
-            return True  # Умирает, но еще на экране
+            return True
 
         # 2. АНИМАЦИЯ (если идет)
         if self.state == "MOVING" and len(self.current_anim_frames) > 1:
@@ -125,8 +121,6 @@ class Beetle(arcade.Sprite):
 
         # 5. СТЕНЫ
         self._handle_walls(screen_width, screen_height)
-
-        # Если мы не умерли в начале функции, мы точно живы
         return True
 
     def start_moving(self):

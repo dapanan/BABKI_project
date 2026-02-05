@@ -2,7 +2,7 @@ import arcade
 import os
 import random
 import math
-
+import pyglet.font
 from logic.controllers.ui_controller import UIController
 from logic.controllers.game_controller import GameController
 from logic.assets.asset_manager import AssetManager
@@ -26,7 +26,6 @@ class MenuCoin(arcade.Sprite):
 
     def __init__(self, x, y, tex_heads, tex_tails, scale):
         super().__init__()
-        # Используем только орла, меняться не будем
         self.texture = tex_heads
 
         self.scale = scale
@@ -37,7 +36,6 @@ class MenuCoin(arcade.Sprite):
         # Физика
         self.radius = 32 * scale
 
-        # ИСПРАВЛЕНИЕ 3: Ускорили в 1.5 раза (было 150 * scale_factor)
         speed = 225 * scale_factor
 
         angle = random.uniform(0, 2 * math.pi)
@@ -53,7 +51,6 @@ class MenuCoin(arcade.Sprite):
         if self.left < 0:
             self.left = 0
             self.change_x *= -1
-        # ИСПРАВЛЕНИЕ 2: Граница теперь ВЕСЬ экран (screen_width)
         elif self.right > screen_width:
             self.right = screen_width
             self.change_x *= -1
@@ -65,8 +62,6 @@ class MenuCoin(arcade.Sprite):
             self.top = screen_height
             self.change_y *= -1
 
-        # ИСПРАВЛЕНИЕ 1: Логику переворота полностью убрали
-        # Автовыбор не происходит
 
 
 class GameWindow(arcade.Window):
@@ -91,12 +86,20 @@ class GameWindow(arcade.Window):
         self.sound_manager = SoundManager()
         self.sound_manager.load_all()
 
-        # Шрифт
-        import pyglet.font
-        font_dir = os.path.join("view", "ui", "fonts")
-        if os.path.exists(font_dir):
-            pyglet.font.add_directory(font_dir)
-        self.menu_font = "RuneScape-ENA"
+        self.menu_font = self.asset_manager.ui_assets.get("font_name", "Arial")
+        print(f"DEBUG: Menu font set to: {self.menu_font}")
+
+        raw_font_path = self.asset_manager.ui_assets.get("font_name", "Arial")
+
+        if raw_font_path != "Arial" and os.path.exists(raw_font_path):
+            pyglet.font.add_file(raw_font_path)
+
+            filename = os.path.basename(raw_font_path)
+            self.menu_font = os.path.splitext(filename)[0]
+
+            print(f"DEBUG: Menu font set to: {self.menu_font}")
+        else:
+            self.menu_font = "Arial"
 
         # Инициализация контроллеров
         self.world_width = screen_width - PANEL_WIDTH
@@ -135,16 +138,12 @@ class GameWindow(arcade.Window):
                 except:
                     pass
 
-        # Создание монеток для фона (20 бронза, 10 серебра, 5 золота)
         self.menu_coins = arcade.SpriteList()
         self._spawn_menu_coins()
 
-        # === ЗАГРУЗКА ФОНОВ ДЛЯ СПРАВКИ ===
         self.help_bg_lucky = self._load_help_image("view/ui/background/willow.jpg")
         self.help_bg_cursed = self._load_help_image("view/ui/background/alt.jpg")
-        # ============================================
 
-        # Текст и кнопки
         cx = screen_width // 2
         cy = screen_height // 2
         btn_w = 240 * scale_factor
@@ -165,11 +164,13 @@ class GameWindow(arcade.Window):
         self.btn_exit_text = arcade.Text("Выйти", cx, cy - (80 * scale_factor), arcade.color.LIGHT_GRAY,
                                          font_size=int(20 * scale_factor), font_name=self.menu_font, anchor_x="center",
                                          anchor_y="center")
-        # --- Кнопка "Как играть?" ---
-        self.showing_help = False  # Флаг показа окна справки
+
+        self.showing_help = False
+        self.help_scroll_y = 0
+        self.help_max_scroll = 0
         self.btn_help = {
             "x": cx,
-            "y": cy + (80 * scale_factor),  # Располагаем выше кнопки "Играть"
+            "y": cy + (80 * scale_factor),
             "w": btn_w,
             "h": btn_h,
             "text": "Как играть?"
@@ -183,7 +184,6 @@ class GameWindow(arcade.Window):
             anchor_y="center"
         )
 
-        # Параметры окна справки
         self.help_w = screen_width // 2
         self.help_h = screen_height // 2
         self.help_x = (screen_width - self.help_w) // 2
@@ -235,9 +235,7 @@ class GameWindow(arcade.Window):
         dt = min(delta_time, 0.05)
 
         if self.state == STATE_MENU:
-            # Обновляем монетки меню
             self.menu_coins.update(dt)
-            # Столкновения монеток меню
             self._handle_menu_collisions()
 
         elif self.state == STATE_GAME:
@@ -264,7 +262,6 @@ class GameWindow(arcade.Window):
                     nx = dx / dist
                     ny = dy / dist
 
-                    # Толкаем друг от друга
                     move = overlap / 2.0
                     c1.center_x += nx * move
                     c1.center_y += ny * move
@@ -286,16 +283,12 @@ class GameWindow(arcade.Window):
             self.ui.draw(balance_value=self.game.balance.get())
 
     def _draw_menu(self):
-        # 1. Монетки на фоне
         self._handle_menu_collisions()
         self.menu_coins.draw()
 
-        # 2. Если открыто окно справки
         if self.showing_help:
-            # Затемнение всего фона игры
             arcade.draw_lrbt_rectangle_filled(0, screen_width, 0, screen_height, (0, 0, 0, 150))
 
-            # Рамка и фон окна
             arcade.draw_lrbt_rectangle_filled(
                 self.help_x, self.help_x + self.help_w,
                 self.help_y, self.help_y + self.help_h,
@@ -307,74 +300,101 @@ class GameWindow(arcade.Window):
                 arcade.color.WHITE, 4
             )
 
-            # === ОТРИСОВКА КАРТИНОК ФОНА ===
             half_w = self.help_w / 2
             h = self.help_h
 
-            # --- ЛЕВАЯ КАРТИНКА (Lucky / willow) ---
             if self.help_bg_lucky:
                 scale_l = min(half_w / self.help_bg_lucky.width, h / self.help_bg_lucky.height)
                 sprite_l = arcade.Sprite(self.help_bg_lucky, scale=scale_l)
                 sprite_l.center_x = self.help_x + half_w / 2
                 sprite_l.center_y = self.help_y + h / 2
 
-                # === ИСПРАВЛЕНИЕ: Используем arcade.draw_sprite() ===
                 arcade.draw_sprite(sprite_l)
-                # ====================================================
 
-                # Затемнение 30%
                 arcade.draw_lrbt_rectangle_filled(
                     self.help_x, self.help_x + half_w,
                     self.help_y, self.help_y + h,
                     (0, 0, 0, 76)
                 )
             else:
-                # ЗАГЛУШКА (Зеленый квадрат)
                 arcade.draw_lrbt_rectangle_filled(
                     self.help_x, self.help_x + half_w,
                     self.help_y, self.help_y + h,
                     (50, 100, 50, 255)
                 )
 
-            # --- ПРАВАЯ КАРТИНКА (Cursed / alt) ---
             if self.help_bg_cursed:
                 scale_c = min(half_w / self.help_bg_cursed.width, h / self.help_bg_cursed.height)
                 sprite_c = arcade.Sprite(self.help_bg_cursed, scale=scale_c)
                 sprite_c.center_x = self.help_x + half_w * 1.5
                 sprite_c.center_y = self.help_y + h / 2
 
-                # === ИСПРАВЛЕНИЕ: Используем arcade.draw_sprite() ===
                 arcade.draw_sprite(sprite_c)
-                # ====================================================
 
-                # Затемнение 30%
                 arcade.draw_lrbt_rectangle_filled(
                     self.help_x + half_w, self.help_x + self.help_w,
                     self.help_y, self.help_y + h,
                     (0, 0, 0, 76)
                 )
             else:
-                # ЗАГЛУШКА (Красный квадрат)
                 arcade.draw_lrbt_rectangle_filled(
                     self.help_x + half_w, self.help_x + self.help_w,
                     self.help_y, self.help_y + h,
                     (100, 0, 0, 255)
                 )
-            # ===================================
 
-            # 3. Текст поверх
+            self.ctx.scissor = (
+                int(self.help_x),
+                int(self.help_y),
+                int(self.help_w),
+                int(self.help_h)
+            )
+
+            help_content = """Добро пожаловать в Incremental Coin Game!
+
+        ОСНОВНАЯ ЦЕЛЬ:
+        Накапливайте баланс, покупайте улучшения и открывайте новые механики.
+
+        ГЕЙМПЛЕЙ:
+        - Нажмите на монетку, чтобы подбросить её.
+        - Если выпадет Орел, вы получаете деньги (согласно стоимости монеты).
+        - Если выпадет Решка, вы ничего не получите.
+
+        СЛИЯНИЕ:
+        - Объединяйте 5 Бронзовых монет, чтобы получить 1 Серебряную.
+        - Объединяйте 3 Серебряные монеты, чтобы получить 1 Золотую.
+        - Золотые монеты могут иметь шанс взрыва, подбрасывающего соседей.
+
+        СПЕЦИАЛЬНЫЕ МЕХАНИКИ:
+        - Жук: Бродит по карте. Пока он жив, он ворует 90% вашего дохода! Убейте его, чтобы вернуть все украденное с множителем x5.
+        - Удачная монета (Зеленая): Если выпадет Орел, ваш текущий баланс мгновенно увеличится в 5 раз.
+        - Проклятая монета (Темная): Рискованная монета! Орел увеличивает баланс в 100 раз. Но если выпадет Решка — вы теряете ВСЕ деньги (Банкротство).
+        - Метеорит: Падает случайно, оставляя Кратер. Кратер — это зона с множителем x10.
+        - Торнадо: Поднимает монетки в воздух и разбрасывает их в стороны, мешая вам.
+        - Висп: Летает по карте и сталкивается с монетками, подбрасывая их.
+
+        СОВЕТЫ:
+        Используйте зоны (x2, x5, Кратер) для пассивного усиления дохода. Старайтесь убивать Жука как можно чаще, если у вас высокий доход."""
+
+            text_start_y = (self.help_y + self.help_h - 30) + self.help_scroll_y
+
             help_text = arcade.Text(
-                "текст для примера",
-                screen_width // 2, screen_height // 2,
+                help_content,
+                screen_width // 2,
+                text_start_y,
                 arcade.color.WHITE,
-                font_size=int(24 * scale_factor),
+                font_size=int(18 * scale_factor),
                 font_name=self.menu_font,
-                anchor_x="center", anchor_y="center", multiline=True,
-                width=self.help_w - 40
+                anchor_x="center",
+                anchor_y="top",
+                multiline=True,
+                width=self.help_w - 60  # Отступы от краев окна
             )
             help_text.draw()
 
-            # 4. Крестик закрытия
+            self.ctx.scissor = None
+
+            # 4. Крестик закрытия (рисуется поверх всего, без обрезки)
             close_btn_size = self.close_btn_size
             close_left = self.help_x + self.help_w - close_btn_size
             close_right = self.help_x + self.help_w
@@ -391,7 +411,6 @@ class GameWindow(arcade.Window):
                              anchor_x="center", anchor_y="center")
 
         else:
-            # 5. Если окно закрыто - рисуем обычное меню
             self.title_text.draw()
 
             mx, my = self.mouse_position
@@ -449,7 +468,6 @@ class GameWindow(arcade.Window):
                     self.showing_help = False
                 return
 
-            # Если окно закрыто - проверяем кнопки меню
             if self._is_hover(self.btn_play, x, y):
                 self.start_game()
             elif self._is_hover(self.btn_help, x, y):
@@ -492,6 +510,16 @@ class GameWindow(arcade.Window):
                         self.game.try_buy_upgrade(upgrade_id)
 
     def on_mouse_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int) -> None:
+        if self.state == STATE_MENU and self.showing_help:
+            self.help_scroll_y -= scroll_y * 30
+
+            if self.help_scroll_y < 0:
+                self.help_scroll_y = 0
+
+            if self.help_scroll_y > 200:
+                self.help_scroll_y = 200
+            return
+
         if self.state == STATE_GAME and x > self.world_width:
             self.ui.on_mouse_scroll(x, y, scroll_x, scroll_y)
 
@@ -501,7 +529,14 @@ class GameWindow(arcade.Window):
         super().on_close()
 
     def _load_help_image(self, path: str):
+        import sys
         if os.path.exists(path):
             return arcade.load_texture(path)
+
+        if getattr(sys, 'frozen', False):
+            exe_path = os.path.join(sys._MEIPASS, path)
+            if os.path.exists(exe_path):
+                return arcade.load_texture(exe_path)
+
         print(f"WARNING: Help background not found: {path}")
         return None

@@ -5,19 +5,15 @@ import random
 
 class SoundManager:
     def __init__(self) -> None:
-        # Списки для бронзы
         self.bronze_toss_sounds = []
         self.bronze_landing_sounds = []
 
-        # Списки для серебра
         self.silver_toss_sounds = []
         self.silver_landing_sounds = []
 
-        # Списки для золота
         self.gold_toss_sounds = []
         self.gold_landing_sounds = []
 
-        # История проигранных звуков
         self._last_bronze_toss = None
         self._last_bronze_land = None
         self._last_silver_toss = None
@@ -34,10 +30,15 @@ class SoundManager:
         self.cursed_fail = None
 
     def load_all(self) -> None:
-        base_sound_dir = "view/sounds"
+        import sys
+        if getattr(sys, 'frozen', False):
+            base_dir = sys._MEIPASS
+        else:
+            base_dir = os.getcwd()
+
+        base_sound_dir = os.path.join(base_dir, "view", "sounds")
 
         print("--- Loading Bronze Sounds ---")
-        # Пробуем сначала папку bronze_sounds, если нет - смотрим в silver_and_bronze_sounds
         bronze_paths = [
             os.path.join(base_sound_dir, "bronze_sounds/tossing"),
             os.path.join(base_sound_dir, "silver_and_bronze_sounds/tossing")
@@ -51,7 +52,6 @@ class SoundManager:
         self._load_sounds_from_dir(bronze_paths_land, self.bronze_landing_sounds, "Bronze Land")
 
         print("--- Loading Silver Sounds ---")
-        # Пробуем сначала папку silver_sounds, если нет - смотрим в silver_and_bronze_sounds
         silver_paths = [
             os.path.join(base_sound_dir, "silver_sounds/tossing"),
             os.path.join(base_sound_dir, "silver_and_bronze_sounds/tossing")
@@ -82,7 +82,6 @@ class SoundManager:
         print(f"Gold Land: {len(self.gold_landing_sounds)}")
         print("--- Loading Beetle Sound ---")
 
-        # Формируем правильный путь: view/sounds/beetle/beetle_dead.mp3
         beetle_sound_dir = os.path.join(base_sound_dir, "beetle")
         beetle_sound_path = os.path.join(beetle_sound_dir, "beetle_dead.mp3")
 
@@ -108,10 +107,7 @@ class SoundManager:
         else:
             print("  -> WARNING: Tornado sound not found")
 
-        # ... (код загрузки других звуков) ...
-
         print("--- Loading Merge Sound ---")
-        # Убедись, что файл у тебя лежит в view/sounds/merge/merge.mp3 или смени путь
         merge_path = os.path.join(base_sound_dir, "merge", "merge.mp3")
         if os.path.exists(merge_path):
             self.merge_sound = arcade.load_sound(merge_path)
@@ -120,25 +116,18 @@ class SoundManager:
             print("  WARNING: Merge sound not found at view/sounds/merge/merge.mp3")
         print("--- Loading Special Coin Sounds ---")
 
-        # === Lucky Coin ===
-        # Удачная (Орел)
         self.lucky_success = self._load_sound_safe(os.path.join(base_sound_dir, "lucky_coin"), "lucky_coin_win")
 
-        # Неудачная (Решка) - На скрине этого файла нет, используем удачный как заглушку
         self.lucky_fail = self._load_sound_safe(os.path.join(base_sound_dir, "lucky_coin"), "lucky_coin_win")
 
-        # === Cursed Coin ===
-        # Удачная (Орел)
         self.cursed_success = self._load_sound_safe(os.path.join(base_sound_dir, "cursed_coin"), "cursed_coin_win")
 
-        # Неудачная (Решка) - Этот файл есть на скрине
         self.cursed_fail = self._load_sound_safe(os.path.join(base_sound_dir, "cursed_coin"), "cursed_coin_fail")
 
     def _load_sound_safe(self, base_dir: str, filename: str):
         """Вспомогательный метод для загрузки звука"""
         path = os.path.join(base_dir, f"{filename}.mp3")
         if os.path.exists(path):
-            # === ИСПРАВЛЕНИЕ: looping=False принудительно ===
             return arcade.load_sound(path)
         print(f"  -> WARNING: Sound {filename} not found")
         return None
@@ -157,9 +146,7 @@ class SoundManager:
 
                 if count > 0:
                     print(f"  -> Loaded {count} {label} from {os.path.basename(directory_path)}")
-                    return  # Успешно загрузили, прерываем поиск
-
-        # Если ничего не нашлось в подходящих папках
+                    return
         print(f"  -> WARNING: No sounds found for {label}!")
 
     def play_toss(self, coin_type: str) -> None:

@@ -5,7 +5,6 @@ import random
 class Meteor(arcade.Sprite):
     def __init__(self, start_x: float, start_y: float, target_y: float, textures: list):
         super().__init__()
-
         # Анимация падения
         self.textures = textures
         if self.textures:
@@ -21,7 +20,7 @@ class Meteor(arcade.Sprite):
         self.trail_timer = 0.0
 
         self.target_y = target_y
-        self.speed = 1000.0  # Быстрая скорость (пикселей в секунду)
+        self.speed = 1000.0
 
     def update(self, dt: float) -> bool:
         """Возвращает True если долетел до земли"""
@@ -29,14 +28,14 @@ class Meteor(arcade.Sprite):
 
         # Генерация дыма
         self.trail_timer += dt
-        if self.trail_timer >= 0.05:  # Каждые 0.05 сек создаем частицу
+        if self.trail_timer >= 0.05:
             self.trail_timer = 0
-            return True  # Возвращаем True для сигнала контроллеру "создай дым"
+            return True
 
         if self.center_y <= self.target_y:
             self.center_y = self.target_y
-            return True  # Приземлился
-        return False  # Летит
+            return True
+        return False
 
     def draw(self) -> None:
         arcade.draw_sprite(self)
