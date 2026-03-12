@@ -294,7 +294,7 @@ class UIController:
 
                     elif b.upgrade_id == "wisp_spawn":
                         if self._has_wisp:
-                            b.title = "Висп уже призван";
+                            b.title = "Висп уже призван"
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
@@ -303,13 +303,13 @@ class UIController:
 
                     elif b.upgrade_id == "spawn_zone_2":
                         if self._has_zone_2:
-                            b.title = "Зона x2 (Куплено)";
+                            b.title = "Зона x2 (Куплено)"
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                     elif b.upgrade_id == "spawn_zone_5":
                         if self._has_zone_5:
-                            b.title = "Зона x5 (Куплено)";
+                            b.title = "Зона x5 (Куплено)"
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
@@ -329,7 +329,7 @@ class UIController:
 
                     elif b.upgrade_id == "spawn_tornado":
                         if self._has_tornado:
-                            b.title = "Торнадо (Куплено)";
+                            b.title = "Торнадо (Куплено)"
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost

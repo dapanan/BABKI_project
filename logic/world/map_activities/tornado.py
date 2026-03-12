@@ -36,7 +36,7 @@ class Tornado(PygameSprite):
         self.anim_timer = 0.0
 
         self.pull_radius = (world_width / 4.0) * world_scale
-        self.pull_strength = 1250.0 * world_scale
+        self.pull_strength = 2000.0 * world_scale
         self.spin_strength = 750.0 * world_scale
 
         self.fade_duration = 0.5

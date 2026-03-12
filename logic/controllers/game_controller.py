@@ -1393,8 +1393,14 @@ class GameController:
             elif isinstance(coin, CursedCoin):
                 coin_type = "cursed"
             data["coins"].append({
-                "type": coin_type, "x": coin.sprite.center_x, "y": coin.sprite.center_y,
-                "vx": coin.vx, "vy": coin.vy, "scale": coin.scale, "is_moving": coin.is_moving
+                "type": coin_type,
+                "x": coin.sprite.center_x,
+                "y": coin.sprite.center_y,
+                "vx": coin.vx,
+                "vy": coin.vy,
+                "scale": coin.scale,
+                "is_moving": coin.is_moving,
+                "angle": coin.angle
             })
         try:
             with open(self.get_save_path(), "w") as f:
@@ -1509,22 +1515,27 @@ class GameController:
                     c = BronzeCoin(c_data["x"], c_data["y"], self.assets.bronze_coin_sprites, value=coin_value,
                                    scale=c_data["scale"],
                                    scale_factor=self.scale_factor)
+                    c.angle = c_data.get("angle", 0.0)
                 elif c_type == "silver":
                     coin_value = self.base_coin_values["silver"] * (2 ** self.silver_value_level)
                     crit_chance = 0.01 * self.silver_crit_chance_level
                     c = SilverCoin(c_data["x"], c_data["y"], self.assets.silver_coin_sprites, crit_chance,
                                    value=coin_value,
                                    scale=c_data["scale"], scale_factor=self.scale_factor)
+                    c.angle = c_data.get("angle", 0.0)
                 elif c_type == "gold":
                     coin_value = self.base_coin_values["gold"] * (2 ** self.gold_value_level)
                     c = GoldCoin(c_data["x"], c_data["y"], self.assets.gold_coin_sprites, value=coin_value,
                                  scale=c_data["scale"], scale_factor=self.scale_factor)
+                    c.angle = c_data.get("angle", 0.0)
                 elif c_type == "lucky":
                     c = LuckyCoin(c_data["x"], c_data["y"], self.assets.lucky_coin_sprites, scale=c_data["scale"],
                                   scale_factor=self.scale_factor)
+                    c.angle = c_data.get("angle", 0.0)
                 elif c_type == "cursed":
                     c = CursedCoin(c_data["x"], c_data["y"], self.assets.cursed_coin_sprites, scale=c_data["scale"],
                                    scale_factor=self.scale_factor)
+                    c.angle = c_data.get("angle", 0.0)
 
                 c.vx = c_data["vx"]
                 c.vy = c_data["vy"]

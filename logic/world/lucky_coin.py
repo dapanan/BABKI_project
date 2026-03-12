@@ -1,6 +1,5 @@
 from logic.world.coin import Coin
 import random
-import arcade
 import math
 
 

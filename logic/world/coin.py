@@ -53,7 +53,7 @@ class Coin:
         # === ФИЗИКА ВРАЩЕНИЯ ===
         self.angle = 0.0
         self.angular_velocity = 0.0
-        self.spin_friction = 0.92
+        self.spin_friction = 0.90
 
         # Состояние
         self.is_moving = False
@@ -335,7 +335,7 @@ class Coin:
                 other.vx -= nx * push
                 other.vy -= ny * push
 
-                # 3. ФИЗИКА ВРАЩЕНИЯ
+                # 3. ФИЗИКА ВРАЩЕНИЯ (Улучшенная)
                 dvx = self.vx - other.vx
                 dvy = self.vy - other.vy
 
@@ -343,16 +343,22 @@ class Coin:
                 ty = nx
 
                 vel_along_tangent = dvx * tx + dvy * ty
-                spin_impulse = vel_along_tangent * 0.02
+
+                # УМЕНЬШИЛ ИМПУЛЬС (было 0.02) -> меньше закручивается при ударе
+                spin_impulse = vel_along_tangent * 0.01
 
                 self.angular_velocity += spin_impulse
                 other.angular_velocity -= spin_impulse
 
                 impact_speed = math.sqrt(dvx ** 2 + dvy ** 2)
-                if impact_speed < 25.0:
-                    self.angular_velocity *= 0.85
-                    other.angular_velocity *= 0.85
 
+                # АГРЕССИВНОЕ ГАШЕНИЕ В "ТОЛПЕ"
+                # Если монетки просто толкаются (медленно), сильно тормозим вращение
+                if impact_speed < 40.0:
+                    self.angular_velocity *= 0.5
+                    other.angular_velocity *= 0.5
+
+                # Ограничение
                 self.angular_velocity = max(-self.MAX_ANGULAR_VELOCITY,
                                             min(self.MAX_ANGULAR_VELOCITY, self.angular_velocity))
                 other.angular_velocity = max(-self.MAX_ANGULAR_VELOCITY,
