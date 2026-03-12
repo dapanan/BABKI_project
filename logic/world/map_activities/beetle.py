@@ -1,36 +1,31 @@
-import arcade
+import pygame
 import random
+from logic.assets.sprite_pygame import PygameSprite
 
 
-class Beetle(arcade.Sprite):
+class Beetle(PygameSprite):
     def __init__(self, x, y, sprites_dict, scale_factor=1.0):
-        super().__init__()
-
-        # Загрузка текстур
+        # 1. Определяем начальную текстуру
         self.frames = sprites_dict
+        start_texture = None
 
-        self.current_anim_frames = []
-        self.frame_index = 0
-        self.anim_timer = 0.0
-        self.anim_speed = 0.2
-
-        # Установка текстуры
         if self.frames.get("down") and len(self.frames["down"]) > 0:
-            self.texture = self.frames["down"][0]
+            start_texture = self.frames["down"][0]
             self.current_anim_frames = self.frames["down"]
         else:
-            # Заглушка
-            from PIL import Image
-            pil_image = Image.new("RGBA", (64, 64), arcade.color.PURPLE)
-            self.texture = arcade.Texture(image=pil_image)
-            self.current_anim_frames = [self.texture]
+            # Создаем заглушку через Pygame
+            start_texture = pygame.Surface((64, 64), pygame.SRCALPHA)
+            start_texture.fill((128, 0, 128))
+            self.current_anim_frames = [start_texture]
 
+        # 2. Инициализируем родительский класс PygameSprite
+        super().__init__(image=start_texture, scale=0.3 * scale_factor)
+
+        # 3. Позиция
         self.center_x = x
         self.center_y = y
 
-        # ПАРАМЕТРЫ ЖУКА
-
-        self.scale = 0.3 * scale_factor
+        # 4. Параметры ЖУКА
         self.speed = 80.0 * scale_factor
 
         # Логика движения
@@ -53,6 +48,11 @@ class Beetle(arcade.Sprite):
         self.is_dying = False
         self.fade_duration = 1.8
         self.fade_timer = 0.0
+
+        # Анимация
+        self.frame_index = 0
+        self.anim_timer = 0.0
+        self.anim_speed = 0.2
 
     def set_direction(self, direction_name):
         """Переключает спрайты направления"""
@@ -189,8 +189,13 @@ class Beetle(arcade.Sprite):
         if hit_something and self.state == "MOVING":
             self.choose_direction()
 
-    def draw(self) -> None:
+    def draw(self, surface, screen_height) -> None:
         # Рисуем только если видимы (альфа > 0)
         if self.is_dying and self.color[3] <= 0:
             return
-        arcade.draw_sprite(self)
+
+        # Применяем прозрачность
+        self._image.set_alpha(self.color[3])
+
+        # Рисуем через родительский класс
+        super().draw(surface, screen_height)

@@ -1,12 +1,10 @@
-import arcade
-import pyglet.font
+import pygame
 import os
 from dataclasses import dataclass
 from typing import Optional, List, Dict
 
 
 # --- Вспомогательные классы ---
-
 @dataclass
 class _TabStub:
     tab_id: int
@@ -16,15 +14,14 @@ class _TabStub:
 @dataclass
 class _UiButtonStub:
     upgrade_id: str
-    title: str  # Отображаемое название
-    base_name: str  # Чистое название для сброса
+    title: str
+    base_name: str
     base_cost: int
-    text_obj: arcade.Text = None
     is_one_time: bool = True
     is_purchased: bool = False
     purchased_text: str = "уже куплен"
     level: int = 0
-    max_level: int = -1  # -1 означает бесконечность
+    max_level: int = -1
 
 
 @dataclass
@@ -39,32 +36,33 @@ class UIController:
         self.panel_x = panel_x
         self.panel_width = panel_width
         self.panel_height = panel_height
-        self._has_tornado = False
-
         self.ui_assets = ui_assets
         self.scale_factor = scale_factor
+        self._has_tornado = False
 
-        # ---РЕГИСТРАЦИЯ ШРИФТА ---
+        # --- ШРИФТЫ ---
         raw_font_path = self.ui_assets.get("font_name", "Arial")
+        try:
+            if raw_font_path != "Arial" and os.path.exists(raw_font_path):
+                self.game_font_path = raw_font_path
+            else:
+                self.game_font_path = None
+        except:
+            self.game_font_path = None
 
-        if raw_font_path != "Arial" and os.path.exists(raw_font_path):
-            pyglet.font.add_file(raw_font_path)
-
-            filename = os.path.basename(raw_font_path)
-            font_name = os.path.splitext(filename)[0]
-
-            self.current_font = font_name
-            print(f"DEBUG UI: Registered font '{self.current_font}' from {raw_font_path}")
+        if self.game_font_path:
+            try:
+                self.base_font = pygame.font.Font(self.game_font_path, 20)
+            except:
+                self.base_font = pygame.font.SysFont("Arial", 20)
         else:
-            self.current_font = "Arial"
-        # ----------------------------------------
+            self.base_font = pygame.font.SysFont("Arial", 20)
 
-        # --- НАСТРОЙКИ ЛАЙАУТА ---
-        self.header_height = int(70 * self.scale_factor)
+        # --- НАСТРОЙКИ ЛАЙАУТА (Увеличены для удобства) ---
+        self.header_height = int(80 * self.scale_factor) # Было 70
         self.tab_bar_height = int(50 * self.scale_factor)
-        self.padding = int(16 * self.scale_factor)
-        self.help_open = False
-        self.btn_height = int(64 * self.scale_factor)
+        self.padding = int(20 * self.scale_factor)     # Было 16
+        self.btn_height = int(70 * self.scale_factor)   # Было 64 (Кнопки выше)
         self.group_header_height = int(40 * self.scale_factor)
         self.btn_gap = int(10 * self.scale_factor)
 
@@ -74,58 +72,46 @@ class UIController:
             _TabStub(2, "Общее"),
         ]
         self.active_tab_index = 0
-
         self.tab_content: Dict[int, List[_UiGroupStub]] = {}
 
-        # === ВКЛАДКА 0: МОНЕТКИ ===
+        # === ВКЛАДКА 0 ===
         self.tab_content[0] = [
             _UiGroupStub("Бронзовая монетка", [
                 _UiButtonStub("buy_bronze_coin", "Купить бронзовую монетку", "Купить бронзовую", 10, is_one_time=False,
-                              level=1, max_level=-1),  # Лимит 100 монет на поле
+                              level=1, max_level=-1),
                 _UiButtonStub("bronze_value_upgrade", "Цена бронзовой монетки x2", "Цена бронзовой x2", 50,
-                              is_one_time=False,
-                              level=0, max_level=50),
+                              is_one_time=False, level=0, max_level=50),
             ]),
-
             _UiGroupStub("Серебряная монетка", [
                 _UiButtonStub("silver_crit_chance_upgrade", "Шанс крита серебрянной монетки", "Шанс крита", 500,
-                              is_one_time=False,
-                              level=1, max_level=50),  # До 50%
+                              is_one_time=False, level=1, max_level=50),
                 _UiButtonStub("silver_crit_upgrade", "Размер крита серебра", "Размер крита", 2000, is_one_time=False,
                               level=1, max_level=20),
-
                 _UiButtonStub("silver_value_upgrade", "Цена серебрянной монетки x2", "Цена серебрянной x2", 1000,
-                              is_one_time=False,
-                              level=0, max_level=50),
+                              is_one_time=False, level=0, max_level=50),
             ]),
-
             _UiGroupStub("Золотая монетка", [
                 _UiButtonStub("gold_explosion_upgrade", "Золотая переворачивает другие",
                               "Золотая переворачивает другие", 15000, is_one_time=True),
                 _UiButtonStub("grab_upgrade", "Взять золотую на ПКМ", "Взять золотую на ПКМ", 25000, is_one_time=True),
                 _UiButtonStub("gold_value_upgrade", "Цена золотой монетки x2", "Цена золотой x2", 5000,
-                              is_one_time=False,
-                              level=0, max_level=50),
+                              is_one_time=False, level=0, max_level=50),
             ]),
-
             _UiGroupStub("Комбо", [
                 _UiButtonStub("unlock_combo", "Открыть комбо", "Открыть комбо", 50000000, is_one_time=True),
-                _UiButtonStub("upgrade_combo_limit", "Лимит комбо", "Лимит комбо", 10000000, is_one_time=False, level=1,
-                              max_level=10),
+                _UiButtonStub("upgrade_combo_limit", "Лимит комбо", "Лимит комбо", 100000000, is_one_time=False,
+                              level=1, max_level=10),
             ]),
-
             _UiGroupStub("Общее для монеток", [
                 _UiButtonStub("auto_flip_upgrade", "Авто-переворот", "Авто-переворот", 1000, is_one_time=False, level=0,
                               max_level=10),
-
                 _UiButtonStub("fuse_to_silver", "Слияние в серебро (5->1)", "Слияние в серебро", 0, is_one_time=False,
                               max_level=-1),
                 _UiButtonStub("fuse_to_gold", "Слияние в золото (3->1)", "Слияние в золото", 0, is_one_time=False,
                               max_level=-1),
             ])
         ]
-
-        # === ВКЛАДКА 1: КАРТА ===
+        # === ВКЛАДКА 1 ===
         self.tab_content[1] = [
             _UiGroupStub("Летающий висп", [
                 _UiButtonStub("wisp_spawn", "Висп", "Висп", 50000, is_one_time=True),
@@ -134,8 +120,6 @@ class UIController:
                 _UiButtonStub("wisp_size", "Размер виспа", "Размер виспа", 10000, is_one_time=False, level=0,
                               max_level=30),
             ]),
-
-            # Группа ЗОНЫ x2
             _UiGroupStub("Зона x2", [
                 _UiButtonStub("spawn_zone_2", "Зона x2", "Зона x2", 80000, is_one_time=True),
                 _UiButtonStub("upgrade_zone_2_size", "Размер зоны x2", "Размер зоны x2", 20000, is_one_time=False,
@@ -143,43 +127,34 @@ class UIController:
                 _UiButtonStub("upgrade_zone_2_mult", "Множитель зоны x2", "Множитель зоны x2", 40000, is_one_time=False,
                               level=0, max_level=10),
             ]),
-
-            # Группа ЗОНЫ x5
             _UiGroupStub("Зона x5", [
                 _UiButtonStub("spawn_zone_5", "Зона x5", "Зона x5", 500000, is_one_time=True),
                 _UiButtonStub("upgrade_zone_5_size", "Размер зоны x5", "Размер зоны x5", 100000, is_one_time=False,
                               level=0, max_level=20),
                 _UiButtonStub("upgrade_zone_5_mult", "Множитель зоны x5", "Множитель зоны x5", 200000,
-                              is_one_time=False,
-                              level=0, max_level=10),
+                              is_one_time=False, level=0, max_level=10),
             ]),
-
             _UiGroupStub("Торнадо", [
                 _UiButtonStub("spawn_tornado", "Торнадо", "Торнадо", 2000000, is_one_time=True),
                 _UiButtonStub("tornado_cooldown_upgrade", "КД Торнадо", "КД Торнадо", 500000, is_one_time=False,
                               level=0, max_level=10),
             ]),
-
-            _UiGroupStub("Метеорит (кратер дает зону х10)", [
+            _UiGroupStub("Метеорит", [
                 _UiButtonStub("spawn_meteor", "Метеорит", "Метеорит", 10000000, is_one_time=True),
                 _UiButtonStub("meteor_cooldown_upgrade", "КД метеорита", "КД метеорита", 2000000, is_one_time=False,
                               level=0, max_level=10),
             ]),
         ]
-
-        # === ВКЛАДКА 2: ОБЩЕЕ ===
+        # === ВКЛАДКА 2 ===
         self.tab_content[2] = [
             _UiGroupStub("Настройки", [
-                _UiButtonStub("new_game", "Новая игра(потерять прогресс)", "Новая игра(потерять прогресс)", 0,
-                              is_one_time=True),
-                _UiButtonStub("finish_game", "Выйти из игры", "Выйти из игры", 0, is_one_time=True),
-                # Новая цена победы: 10 Септиллионов (Sp)
-                _UiButtonStub("buy_victory", "Победа??", "Победа??", 10_000_000_000_000_000_000_000_000,
+                _UiButtonStub("new_game", "Новая игра(потерять прогресс)", "Новая игра", 0, is_one_time=True),
+                _UiButtonStub("finish_game", "Выйти из игры", "Выйти", 0, is_one_time=True),
+                _UiButtonStub("buy_victory", "Победа??", "Победа", 10_000_000_000_000_000_000_000_000,
                               is_one_time=True),
             ]),
         ]
 
-        # --- СОСТОЯНИЕ UI ---
         self._enabled = {b.upgrade_id: True
                          for tab_groups in self.tab_content.values()
                          for grp in tab_groups
@@ -198,33 +173,11 @@ class UIController:
 
         self.scroll_y = 0
 
-        self.font_size_header = int(30 * self.scale_factor)
-        self.font_size_balance = int(28 * self.scale_factor)
-        self.font_size_button = int(19 * self.scale_factor)
-        self.font_size_tab = int(16 * self.scale_factor)
-        self.font_size_group = int(20 * self.scale_factor)
-
-        self._init_button_texts()
-
-        self.header_text = arcade.Text("Апгрейды", self.panel_x + self.padding,
-                                       self.panel_height - int(40 * self.scale_factor),
-                                       (50, 50, 50, 255), self.font_size_header, font_name=self.current_font)
-        self.balance_text = arcade.Text("", 0, 0, arcade.color.WHITE, self.font_size_balance,
-                                        anchor_x="right", anchor_y="center", font_name=self.current_font)
-
-    def _init_button_texts(self):
-        for tab_groups in self.tab_content.values():
-            for grp in tab_groups:
-                for b in grp.buttons:
-                    if b.upgrade_id in ["new_game", "finish_game"]:
-                        b.title = b.base_name
-                    elif not b.is_one_time:
-                        b.title = self._format_button_text(b.base_name, b.base_cost, b.level)
-                    else:
-                        b.title = f"{b.base_name} ({self._format_number(b.base_cost)})"
-
-                    b.text_obj = arcade.Text(b.title, 0, 0, (50, 50, 50, 255), self.font_size_button,
-                                             font_name=self.current_font) # Используем переменную
+        self.font_size_header = int(32 * self.scale_factor) # Было 30
+        self.font_size_balance = int(30 * self.scale_factor) # Было 28
+        self.font_size_button = int(22 * self.scale_factor)  # Было 19 (Шрифт больше)
+        self.font_size_tab = int(18 * self.scale_factor)
+        self.font_size_group = int(22 * self.scale_factor)  # Было 20
 
     def _format_number(self, num: int) -> str:
         if num == 0: return "0"
@@ -237,39 +190,23 @@ class UIController:
         formatted_val = f"{temp_num:.1f}{suffixes[magnitude]}"
         return formatted_val
 
-    def _format_button_text(self, name: str, cost: int, level: int = 0) -> str:
-        cost_str = self._format_number(cost)
-        if level > 0:
-            return f"{name} LvL {level} ({cost_str})"
-        return f"{name} ({cost_str})"
-
     def update_button(self, upgrade_id: str, cost: int, level: int = 0, name: str = None) -> None:
         for tab_groups in self.tab_content.values():
             for grp in tab_groups:
                 for b in grp.buttons:
                     if b.upgrade_id == upgrade_id:
-                        # 1. Обновляем цену
                         b.base_cost = cost
                         b.level = level
-
-                        # 2. Если передали новое имя, обновляем базу
                         if name is not None:
                             b.base_name = name
                             b.title = name
-
-                        # 3. Формируем отображаемый текст
-                        # ИСПРАВЛЕНИЕ: Кнопки выхода и новой игры не должны показывать цену
                         if b.upgrade_id in ["new_game", "finish_game"]:
                             b.title = b.base_name
                             return
-
                         price_str = self._format_number(cost)
-
                         if b.is_one_time:
                             if not b.is_purchased:
                                 b.title = f"{b.base_name} ({price_str})"
-                            else:
-                                pass
                         else:
                             if level > 0:
                                 b.title = f"{b.base_name} ({level}) ({price_str})"
@@ -277,6 +214,7 @@ class UIController:
                                 b.title = f"{b.base_name} ({price_str})"
                         return
 
+    # Сокращенные методы обновления состояния (без изменений логики)
     def update_grab_state(self, has_gold: bool, purchased: bool) -> None:
         self._has_gold = has_gold
         self._grab_purchased = purchased
@@ -291,10 +229,8 @@ class UIController:
         self._meteor_unlocked = unlocked
 
     def update_zone_state(self, has_zone_2=None, has_zone_5=None) -> None:
-        if has_zone_2 is not None:
-            self._has_zone_2 = has_zone_2
-        if has_zone_5 is not None:
-            self._has_zone_5 = has_zone_5
+        if has_zone_2 is not None: self._has_zone_2 = has_zone_2
+        if has_zone_5 is not None: self._has_zone_5 = has_zone_5
 
     def update_tornado_state(self, unlocked: bool):
         self._has_tornado = unlocked
@@ -312,32 +248,40 @@ class UIController:
         for tab_groups in self.tab_content.values():
             for grp in tab_groups:
                 for b in grp.buttons:
-                    # ИСПРАВЛЕНИЕ: Системные кнопки всегда активны и без цены
+
+                    # --- ФИНАЛЬНАЯ ПРОВЕРКА (Исправление белых кнопок) ---
+                    # Если в названии уже написано "Макс.", отключаем кнопку насильно
+                    if "Макс." in b.title or "(Max.)" in b.title:
+                        self._enabled[b.upgrade_id] = False
+                        continue  # Переходим к следующей кнопке
+                    # ----------------------------------------------------------
+
+                    # 1. Системные кнопки
                     if b.upgrade_id in ["new_game", "finish_game"]:
                         self._enabled[b.upgrade_id] = True
                         b.title = b.base_name
                         continue
 
+                    # 2. Победа
                     if b.upgrade_id == "buy_victory":
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
                         continue
 
-                    # === ПРОВЕРКА МАКСИМАЛЬНОГО УРОВНЯ ===
+                    # 3. Проверка Максимального Уровня (Дублирование защиты)
                     if b.max_level > 0 and b.level >= b.max_level:
                         b.title = f"{b.base_name} (Макс.)"
                         self._enabled[b.upgrade_id] = False
                         continue
-                    # ====================================
 
-                    # Если одноразовая уже куплена
+                    # 4. Если уже куплено
                     if b.is_purchased:
                         self._enabled[b.upgrade_id] = False
                         continue
 
-                    # === ЛОГИКА КРИПТА СЕРЕБРА ===
+                    # --- ЛОГИКА СПЕЦИАЛЬНЫХ КНОПОК (Остальное без изменений) ---
+
                     elif b.upgrade_id == "silver_crit_upgrade":
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-                    # =========================
 
                     elif b.upgrade_id == "grab_upgrade":
                         if self._has_gold and not b.is_purchased:
@@ -345,210 +289,152 @@ class UIController:
                         else:
                             self._enabled[b.upgrade_id] = False
 
-                        if b.is_purchased:
-                            b.title = f"{b.base_name} ({b.purchased_text})"
-                        elif not self._has_gold:
-                            b.title = f"{b.base_name} (Нет золота)"
-                        else:
-                            b.title = f"{b.base_name} ({self._format_number(b.base_cost)})"
-
                     elif b.upgrade_id == "gold_explosion_upgrade":
-                        if self._explosion_purchased:
-                            self._enabled[b.upgrade_id] = False
-                        else:
-                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                        self._enabled[b.upgrade_id] = (not self._explosion_purchased) and (balance_value >= b.base_cost)
 
-                    # === ЛОГИКА ВИСПА ===
                     elif b.upgrade_id == "wisp_spawn":
                         if self._has_wisp:
-                            b.title = "Висп уже призван"
+                            b.title = "Висп уже призван";
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-
                     elif "wisp" in b.upgrade_id and b.upgrade_id != "wisp_spawn":
-                        if self._has_wisp:
-                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-                        else:
-                            self._enabled[b.upgrade_id] = False
+                        self._enabled[b.upgrade_id] = self._has_wisp and (balance_value >= b.base_cost)
 
-                    # === ЛОГИКА ЗОН ===
                     elif b.upgrade_id == "spawn_zone_2":
                         if self._has_zone_2:
-                            b.title = "Зона x2 (Куплено)"
+                            b.title = "Зона x2 (Куплено)";
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-
                     elif b.upgrade_id == "spawn_zone_5":
                         if self._has_zone_5:
-                            b.title = "Зона x5 (Куплено)"
+                            b.title = "Зона x5 (Куплено)";
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-
                     elif "upgrade_zone_2" in b.upgrade_id:
-                        if self._has_zone_2:
-                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-                        else:
-                            self._enabled[b.upgrade_id] = False
-
+                        self._enabled[b.upgrade_id] = self._has_zone_2 and (balance_value >= b.base_cost)
                     elif "upgrade_zone_5" in b.upgrade_id:
-                        if self._has_zone_5:
-                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-                        else:
-                            self._enabled[b.upgrade_id] = False
+                        self._enabled[b.upgrade_id] = self._has_zone_5 and (balance_value >= b.base_cost)
 
-                    # === ЛОГИКА МЕТЕОРИТА ===
                     elif "meteor" in b.upgrade_id and b.upgrade_id != "spawn_meteor":
                         if not self._meteor_unlocked:
                             self._enabled[b.upgrade_id] = False
                         else:
-                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                            if b.level < b.max_level:
+                                self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                            else:
+                                self._enabled[b.upgrade_id] = False
 
-                    # === ЛОГИКА ТОРНАДО ===
                     elif b.upgrade_id == "spawn_tornado":
                         if self._has_tornado:
-                            b.title = "Торнадо (Куплено)"
+                            b.title = "Торнадо (Куплено)";
                             self._enabled[b.upgrade_id] = False
                         else:
                             self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-
                     elif "tornado" in b.upgrade_id and b.upgrade_id != "spawn_tornado":
                         if not self._has_tornado:
                             self._enabled[b.upgrade_id] = False
                         else:
-                            self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                            if b.level < b.max_level:
+                                self._enabled[b.upgrade_id] = balance_value >= b.base_cost
+                            else:
+                                self._enabled[b.upgrade_id] = False
 
-                    # === ЛОГИКА СЛИЯНИЯ ===
                     elif b.upgrade_id == "fuse_to_silver":
-                        if coin_counts:
-                            have = coin_counts.get('bronze', 0)
-                            need = 5
-                            if have >= need:
-                                self._enabled[b.upgrade_id] = True
-                                b.title = f"Слияние в серебро (5->1)"
-                            else:
-                                self._enabled[b.upgrade_id] = False
-                                b.title = f"Слияние в серебро (нужно {need - have})"
+                        if coin_counts and coin_counts.get('bronze', 0) >= 5:
+                            self._enabled[b.upgrade_id] = True
+                            b.title = f"Слияние в серебро (5->1)"
                         else:
                             self._enabled[b.upgrade_id] = False
-
+                            needed = 5 - coin_counts.get('bronze', 0) if coin_counts else 5
+                            b.title = f"Слияние в серебро (нужно {needed})"
                     elif b.upgrade_id == "fuse_to_gold":
-                        if coin_counts:
-                            have = coin_counts.get('silver', 0)
-                            need = 3
-                            if have >= need:
-                                self._enabled[b.upgrade_id] = True
-                                b.title = f"Слияние в золото (3->1)"
-                            else:
-                                self._enabled[b.upgrade_id] = False
-                                b.title = f"Слияние в золото (нужно {need - have})"
+                        if coin_counts and coin_counts.get('silver', 0) >= 3:
+                            self._enabled[b.upgrade_id] = True
+                            b.title = f"Слияние в золото (3->1)"
                         else:
                             self._enabled[b.upgrade_id] = False
+                            needed = 3 - coin_counts.get('silver', 0) if coin_counts else 3
+                            b.title = f"Слияние в золото (нужно {needed})"
 
-                    # === ЛОГИКА НОВЫХ ОБЩИХ АПГРЕЙДОВ ===
                     elif b.upgrade_id == "auto_flip_upgrade":
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-
                     elif "value_upgrade" in b.upgrade_id:
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
-
                     else:
                         self._enabled[b.upgrade_id] = balance_value >= b.base_cost
 
-    def draw(self, balance_value: int) -> None:
-        arcade.draw_lrbt_rectangle_filled(
-            self.panel_x,
-            self.panel_x + self.panel_width,
-            0,
-            self.panel_height,
-            arcade.color.LIGHT_GRAY
-        )
-        self._draw_content()
-        self._draw_tab_bar()
+    def draw(self, surface, screen_height, balance_value: int) -> None:
+        # 1. Фон панели (Серый)
+        pygame.draw.rect(surface, (200, 200, 200), (self.panel_x, 0, self.panel_width, self.panel_height))
 
-        header_bg_y_top = self.panel_height
-        header_bg_y_bottom = self.panel_height - self.header_height
-        arcade.draw_lrbt_rectangle_filled(
-            self.panel_x,
-            self.panel_x + self.panel_width,
-            header_bg_y_bottom,
-            header_bg_y_top,
-            arcade.color.DARK_GRAY
-        )
+        # Координаты на экране
+        header_rect = pygame.Rect(self.panel_x, 0, self.panel_width, self.header_height)
+        tabs_rect = pygame.Rect(self.panel_x, self.header_height, self.panel_width, self.tab_bar_height)
 
+        # 2. Рисуем Хедер (Темный фон, Баланс сверху)
+        pygame.draw.rect(surface, (50, 50, 50), header_rect)
+
+        # Заголовок текст
+        head_font = pygame.font.Font(self.game_font_path,
+                                     self.font_size_header) if self.game_font_path else pygame.font.SysFont("Arial",
+                                                                                                            self.font_size_header)
+        title_surf = head_font.render("Апгрейды", True, (200, 200, 200))
+        surface.blit(title_surf, (self.panel_x + self.padding, 20))
+
+        # Баланс текст (Справа вверху)
         formatted_balance = self._format_number(balance_value)
-        self.balance_text.text = f"Баланс: {formatted_balance}"
-        self.balance_text.x = self.panel_x + self.panel_width - 20
-        self.balance_text.y = self.panel_height - (self.header_height / 2)
-        self.balance_text.draw()
-        self.header_text.draw()
+        bal_font = pygame.font.Font(self.game_font_path,
+                                    self.font_size_balance) if self.game_font_path else pygame.font.SysFont("Arial",
+                                                                                                            self.font_size_balance)
+        bal_surf = bal_font.render(f"Баланс: {formatted_balance}", True, (255, 255, 255))
+        bal_rect = bal_surf.get_rect(midright=(self.panel_x + self.panel_width - 20, self.header_height / 2))
+        surface.blit(bal_surf, bal_rect)
 
-    def _draw_tab_bar(self):
-        tab_y = self.panel_height - self.header_height - self.tab_bar_height
-        tab_w = self.panel_width / len(self.tabs)
+        # 3. Рисуем Табы
+        self._draw_tab_bar(surface, tabs_rect)
 
-        for i, tab in enumerate(self.tabs):
-            x = self.panel_x + i * tab_w
+        # 4. Рисуем Контент (С обрезкой и скроллом)
+        content_start_y = self.header_height + self.tab_bar_height
+        content_height = self.panel_height - content_start_y
+        clip_rect = pygame.Rect(self.panel_x, content_start_y, self.panel_width, content_height)
 
-            if i == self.active_tab_index:
-                bg_color = arcade.color.WHITE
-                text_color = arcade.color.BLACK
-            else:
-                bg_color = arcade.color.GRAY
-                text_color = (50, 50, 50, 255)
+        surface.set_clip(clip_rect)
 
-            arcade.draw_lrbt_rectangle_filled(x, x + tab_w, tab_y, tab_y + self.tab_bar_height, bg_color)
-            arcade.draw_lrbt_rectangle_outline(x, x + tab_w, tab_y, tab_y + self.tab_bar_height, arcade.color.DARK_GRAY,
-                                               2)
+        # Смещение для рисования
+        current_draw_y = content_start_y - self.scroll_y
 
-            text = arcade.Text(tab.title, x + tab_w / 2, tab_y + self.tab_bar_height / 2,
-                               text_color, 16, anchor_x="center", anchor_y="center", font_name=self.current_font)
-            text.draw()
+        group_font = pygame.font.Font(self.game_font_path,
+                                      self.font_size_group) if self.game_font_path else pygame.font.SysFont("Arial",
+                                                                                                            self.font_size_group)
+        btn_font = pygame.font.Font(self.game_font_path,
+                                    self.font_size_button) if self.game_font_path else pygame.font.SysFont("Arial",
+                                                                                                           self.font_size_button)
 
-    def _draw_content(self):
         groups = self.tab_content.get(self.active_tab_index, [])
-        content_start_y = self.panel_height - self.header_height - self.tab_bar_height
-        fade_margin = 40.0
-
-        current_base_y = content_start_y + self.scroll_y
 
         for grp in groups:
-            header_y_top = current_base_y
-            header_y_bottom = header_y_top - self.group_header_height
+            # Заголовок группы
+            grp_surf = group_font.render(grp.title, True, (30, 30, 30))
+            surface.blit(grp_surf, (self.panel_x + self.padding, current_draw_y + 10))
+            pygame.draw.line(surface, (100, 100, 100), (self.panel_x + self.padding, current_draw_y + 35),
+                             (self.panel_x + self.panel_width - self.padding, current_draw_y + 35), 1)
 
-            if header_y_top > 0 and header_y_bottom < content_start_y:
-                grp_text = arcade.Text(grp.title, self.panel_x + self.padding,
-                                       header_y_bottom + int(10 * self.scale_factor),
-                                       (30, 30, 30, 255), self.font_size_group, font_name=self.current_font, bold=True)
-                grp_text.draw()
-                arcade.draw_line(self.panel_x + self.padding, header_y_bottom,
-                                 self.panel_x + self.padding + 2, header_y_bottom, (50, 50, 50, 255), 2)
+            current_draw_y += self.group_header_height
 
-            current_base_y -= self.group_header_height
-
+            # Кнопки
             for b in grp.buttons:
-                b_y = current_base_y - self.btn_height
+                # Если кнопка вышла за пределы видимости снизу - прерываем (оптимизация)
+                if current_draw_y > content_start_y + content_height:
+                    break
+
                 enabled = self._enabled.get(b.upgrade_id, True)
                 is_pressed = (self._pressed_id == b.upgrade_id)
-                y_draw = b_y - (6 if is_pressed else 0)
+                y_draw = current_draw_y + (6 if is_pressed else 0)  # Эффект нажатия
 
-                alpha = 255
-                if b_y < fade_margin:
-                    factor = b_y / fade_margin
-                    alpha = int(255 * max(0, factor))
-
-                button_top_edge = y_draw + self.btn_height
-                dist_from_menu = button_top_edge - content_start_y
-                if dist_from_menu > 0 and dist_from_menu < fade_margin:
-                    factor = 1.0 - (dist_from_menu / fade_margin)
-                    alpha = int(255 * max(0, factor))
-
-                if alpha <= 0:
-                    current_base_y -= (self.btn_height + self.btn_gap)
-                    continue
-
+                # Рисуем кнопку
                 texture_to_draw = None
                 if self.ui_assets["btn_normal"]:
                     if not enabled:
@@ -558,76 +444,78 @@ class UIController:
                     else:
                         texture_to_draw = self.ui_assets["btn_normal"]
 
+                btn_w = self.panel_width - (self.padding * 2)
+
                 if texture_to_draw:
-                    button_sprite = arcade.Sprite(texture_to_draw)
-                    button_sprite.width = self.panel_width - (self.padding * 2)
-                    button_sprite.height = self.btn_height
-                    button_sprite.center_x = self.panel_x + self.panel_width / 2
-                    button_sprite.center_y = y_draw + self.btn_height / 2
-                    button_sprite.color = (255, 255, 255, alpha)
-
-                    temp_sprite_list = arcade.SpriteList()
-                    temp_sprite_list.append(button_sprite)
-                    temp_sprite_list.draw()
+                    scaled_tex = pygame.transform.scale(texture_to_draw, (btn_w, self.btn_height))
+                    surface.blit(scaled_tex, (self.panel_x + self.padding, y_draw))
                 else:
-                    fill = arcade.color.WHITE if enabled else arcade.color.GRAY
-                    arcade.draw_lrbt_rectangle_filled(
-                        self.panel_x + self.padding,
-                        self.panel_x + self.panel_width - self.padding,
-                        y_draw,
-                        y_draw + self.btn_height,
-                        fill
-                    )
+                    fill = (255, 255, 255) if enabled else (150, 150, 150)
+                    pygame.draw.rect(surface, fill, (self.panel_x + self.padding, y_draw, btn_w, self.btn_height))
+                    pygame.draw.rect(surface, (50, 50, 50),
+                                     (self.panel_x + self.padding, y_draw, btn_w, self.btn_height), 1)
 
-                if enabled:
-                    color = (50, 50, 50, 255)
-                else:
-                    color = (120, 120, 120, 255)
-                text_color = (color[0], color[1], color[2], alpha)
+                # Текст кнопки
+                color = (50, 50, 50) if enabled else (100, 100, 100)
+                text_surf = btn_font.render(b.title, True, color)
+                surface.blit(text_surf, (self.panel_x + self.padding + 14, y_draw + 22))
 
-                b.text_obj.text = b.title
-                b.text_obj.x = self.panel_x + self.padding + 14
-                b.text_obj.y = y_draw + 22
-                b.text_obj.color = text_color
-                b.text_obj.draw()
+                current_draw_y += self.btn_height + self.btn_gap
 
-                current_base_y -= (self.btn_height + self.btn_gap)
+            current_draw_y += 20  # Отступ между группами
 
-    def _get_current_buttons(self):
-        return self.tab_content.get(self.active_tab_index, [])
+        surface.set_clip(None)
+
+    def _draw_tab_bar(self, surface, rect):
+        tab_w = self.panel_width / len(self.tabs)
+        tab_font = pygame.font.Font(self.game_font_path,
+                                    self.font_size_tab) if self.game_font_path else pygame.font.SysFont("Arial",
+                                                                                                        self.font_size_tab)
+
+        for i, tab in enumerate(self.tabs):
+            x = rect.x + i * tab_w
+            # Фон таба
+            if i == self.active_tab_index:
+                bg_color = (255, 255, 255)
+                text_color = (0, 0, 0)
+            else:
+                bg_color = (180, 180, 180)
+                text_color = (50, 50, 50)
+
+            pygame.draw.rect(surface, bg_color, (x, rect.y, tab_w, rect.height))
+            pygame.draw.rect(surface, (100, 100, 100), (x, rect.y, tab_w, rect.height), 1)
+
+            # Текст таба
+            text_surf = tab_font.render(tab.title, True, text_color)
+            text_rect = text_surf.get_rect(center=(x + tab_w / 2, rect.y + rect.height / 2))
+            surface.blit(text_surf, text_rect)
 
     def _hit_test_tabs(self, x: int, y: int) -> Optional[int]:
-        tab_y_top = self.panel_height - self.header_height
-        tab_y_bottom = tab_y_top - self.tab_bar_height
-
-        if tab_y_bottom < y < tab_y_top:
-            tab_w = self.panel_width / len(self.tabs)
+        # Проверка клика по табам
+        if self.header_height < y < self.header_height + self.tab_bar_height:
             if self.panel_x < x < self.panel_x + self.panel_width:
+                tab_w = self.panel_width / len(self.tabs)
                 col = int((x - self.panel_x) / tab_w)
-                if 0 <= col < len(self.tabs):
-                    return col
+                if 0 <= col < len(self.tabs): return col
         return None
 
     def _hit_test_buttons(self, x: int, y: int) -> Optional[str]:
+        # Проверка клика по кнопкам с учетом скролла
+        content_start_y = self.header_height + self.tab_bar_height
+        current_y = content_start_y - self.scroll_y
+
         groups = self.tab_content.get(self.active_tab_index, [])
-        content_start_y = self.panel_height - self.header_height - self.tab_bar_height
-        current_base_y = content_start_y + self.scroll_y
-
         for grp in groups:
-            current_base_y -= self.group_header_height
-
+            current_y += self.group_header_height
             for b in grp.buttons:
-                b_y = current_base_y - self.btn_height
-
                 bx = self.panel_x + self.padding
-                by = b_y
+                by = current_y
                 bw = self.panel_width - (self.padding * 2)
                 bh = self.btn_height
-
                 if bx <= x <= bx + bw and by <= y <= by + bh:
                     return b.upgrade_id
-
-                current_base_y -= (self.btn_height + self.btn_gap)
+                current_y += self.btn_height + self.btn_gap
+            current_y += 20
         return None
 
     def on_mouse_press(self, x: int, y: int) -> None:
@@ -656,36 +544,30 @@ class UIController:
     def on_mouse_release(self, x: int, y: int) -> Optional[str]:
         released_over_id = self._hit_test_buttons(x, y)
         clicked_id: Optional[str] = None
-
         if self._pressed_down_id is not None and released_over_id == self._pressed_down_id:
             if self._enabled.get(self._pressed_down_id, True):
                 clicked_id = self._pressed_down_id
-
         self._pressed_id = None
         self._pressed_down_id = None
         return clicked_id
 
-    def on_mouse_scroll(self, x: int, y: int, scroll_x: int, scroll_y: int) -> None:
-        groups = self.tab_content.get(self.active_tab_index, [])
-        content_height = 0
-        for grp in groups:
-            header_h = self.group_header_height
-            buttons_h = len(grp.buttons) * (self.btn_height + self.btn_gap)
-            content_height += (header_h + buttons_h)
+    def on_mouse_scroll(self, x: int, y: int, scroll_y: int) -> None:
+        # Инвертируем логику: Крутим колесо ВВЕРХ (scroll_y < 0) -> Список идет ВВЕРХ (scroll_y уменьшается)
+        self.scroll_y -= scroll_y * 20
 
-        visible_height = self.panel_height - self.header_height - self.tab_bar_height
+        # Ограничения скролла
+        content_h = 0
+        for grp in self.tab_content.get(self.active_tab_index, []):
+            h = self.group_header_height
+            h += len(grp.buttons) * (self.btn_height + self.btn_gap)
+            h += 20
+            content_h += h
 
-        if content_height <= visible_height:
-            self.scroll_y = 0
-            return
+        visible_h = self.panel_height - self.header_height - self.tab_bar_height
+        max_scroll = max(0, content_h - visible_h)
 
-        max_scroll_limit = (content_height - visible_height) + 50
-        self.scroll_y -= scroll_y * 50
-
-        if self.scroll_y < 0:
-            self.scroll_y = 0
-        elif self.scroll_y > max_scroll_limit:
-            self.scroll_y = max_scroll_limit
+        if self.scroll_y < 0: self.scroll_y = 0
+        if self.scroll_y > max_scroll: self.scroll_y = max_scroll
 
     def mark_purchased(self, upgrade_id: str) -> None:
         for tab_groups in self.tab_content.values():

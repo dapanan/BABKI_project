@@ -1,6 +1,7 @@
-import arcade
+from logic.assets.sprite_pygame import PygameSprite
 import random
 import math
+import pygame
 
 
 class Coin:
@@ -18,7 +19,7 @@ class Coin:
         self.scale = scale
         self.world_scale = scale_factor
 
-        self.sprite = arcade.Sprite()
+        self.sprite = PygameSprite()
         self.sprite.center_x = x
         self.sprite.center_y = y
 
@@ -217,18 +218,39 @@ class Coin:
                 self.sprite.texture = self.sprites["tails"]
                 self.last_outcome_value = 0
 
-    def draw(self) -> None:
+    def draw(self, surface, screen_height) -> None:
         if self.is_moving:
-            arcade.draw_sprite(self.sprite)
-            arcade.draw_circle_filled(
-                self.sprite.center_x,
-                self.sprite.center_y - 10,
-                self.radius,
-                (0, 0, 0, 50)
-            )
-        else:
-            arcade.draw_sprite(self.sprite)
+            # --- РИСОВАНИЕ ТЕНИ ---
+            # Тень должна быть немного больше монетки
+            shadow_scale = 1.15
+            shadow_radius = int(self.radius * shadow_scale)
 
+            shadow_surf = pygame.Surface((shadow_radius * 2, shadow_radius * 2), pygame.SRCALPHA)
+
+            # Рисуем круг (черный, полупрозрачный)
+            pygame.draw.circle(shadow_surf, (0, 0, 0, 60), (shadow_radius, shadow_radius), shadow_radius)
+
+            # Расчет координат для рисования ТЕНИ (Верхний левый угол поверхности тени)
+            # 1. Центр монетки на экране Pygame:
+            #    screen_y = screen_height - self.sprite.center_y
+            # 2. Центр тени должен быть НИЖЕ центра монетки на offset пикселей:
+            #    shadow_center_y = screen_y + offset
+            # 3. Позиция blit (верх левый угол тени) = shadow_center_y - shadow_radius
+
+            offset = 15  # Насколько ниже центра монетки рисовать тень
+            shadow_center_y = (screen_height - self.sprite.center_y) + offset
+
+            draw_shadow_x = int(self.sprite.center_x - shadow_radius)
+            draw_shadow_y = int(shadow_center_y - shadow_radius)
+
+            surface.blit(shadow_surf, (draw_shadow_x, draw_shadow_y))
+            # -------------------------
+
+            # Рисуем саму монетку
+            self.sprite.draw(surface, screen_height)
+        else:
+            # Лежачая монета (тень обычно не нужна или статична, оставим как есть)
+            self.sprite.draw(surface, screen_height)
     def hit_by_coin(self, source_coin, nx, ny) -> None:
         self.is_moving = True
         self.vx = nx * (600 * self.world_scale)

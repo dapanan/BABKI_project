@@ -1,24 +1,32 @@
-import arcade
+import pygame
 import math
+from logic.assets.sprite_pygame import PygameSprite
 
 
-class Tornado(arcade.Sprite):
+class Tornado(PygameSprite):
     def __init__(self, x: float, y: float, textures: list, sound, scale: float = 1.0, world_scale: float = 1.0,
                  world_width: int = 1920):
-        super().__init__()
-
+        # 1. Определяем начальную текстуру
+        start_texture = None
         self.textures = textures
+
         if self.textures:
-            self.texture = self.textures[0]
+            start_texture = self.textures[0]
         else:
-            self.texture = None
+            # Создаем заглушку
+            start_texture = pygame.Surface((100, 100), pygame.SRCALPHA)
+            start_texture.fill((100, 100, 255))
+            self.texture = start_texture
+
+        # 2. Инициализируем родительский класс PygameSprite
+        super().__init__(image=start_texture, scale=scale)
 
         self.center_x = x
         self.center_y = y
-        self.scale = scale
 
+        # Звук (sound теперь объект pygame.mixer.Sound)
         if sound:
-            arcade.play_sound(sound)
+            sound.play()
 
         self.duration = 7.8
         self.timer = 0.0
@@ -36,6 +44,7 @@ class Tornado(arcade.Sprite):
     def update(self, dt: float) -> bool:
         self.timer += dt
 
+        # Логика прозрачности (используем свойство alpha PygameSprite)
         alpha = 255
         if self.timer < self.fade_duration:
             alpha = int(255 * (self.timer / self.fade_duration))
@@ -43,6 +52,7 @@ class Tornado(arcade.Sprite):
             alpha = int(255 * ((self.duration - self.timer) / self.fade_duration))
         self.alpha = alpha
 
+        # Анимация
         if self.textures and len(self.textures) > 1:
             self.anim_timer += dt
             if self.anim_timer >= self.anim_speed:
@@ -55,7 +65,7 @@ class Tornado(arcade.Sprite):
         return True
 
     def affect_coin(self, coin, dt):
-        # Игнорируем только если иммунитет виспа
+        # Логика физики не меняется
         if not hasattr(coin, 'vx'):
             return
         if coin.wisp_immunity_timer > 0:
@@ -105,3 +115,6 @@ class Tornado(arcade.Sprite):
                     coin.sprite.texture = coin.fixed_outcome_texture
                 else:
                     coin.sprite.texture = coin.sprites.get("heads")
+
+    def draw(self, surface, screen_height) -> None:
+        super().draw(surface, screen_height)

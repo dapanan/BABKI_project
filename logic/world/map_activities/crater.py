@@ -1,9 +1,10 @@
-import arcade
+import pygame
+from logic.assets.sprite_pygame import PygameSprite
 
 
-class Crater(arcade.Sprite):
-    def __init__(self, x: float, y: float, texture: arcade.Texture):
-        super().__init__(texture)
+class Crater(PygameSprite):
+    def __init__(self, x: float, y: float, texture: pygame.Surface):
+        super().__init__(image=texture)
         self.center_x = x
         self.center_y = y
 
@@ -27,8 +28,8 @@ class Crater(arcade.Sprite):
 
             if alpha_ratio < 0: alpha_ratio = 0
 
-            r, g, b, _ = self.color
-            self.color = (int(r), int(g), int(b), int(255 * alpha_ratio))
+            # В PygameSprite мы управляем прозрачностью через свойство alpha
+            self.alpha = int(255 * alpha_ratio)
 
             if alpha_ratio <= 0:
                 return False
@@ -52,5 +53,6 @@ class Crater(arcade.Sprite):
             return True
         return False
 
-    def draw(self) -> None:
-        arcade.draw_sprite(self)
+    def draw(self, surface, screen_height) -> None:
+        # Используем метод отрисовки родительского класса PygameSprite
+        super().draw(surface, screen_height)

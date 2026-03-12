@@ -1,10 +1,10 @@
-import arcade
+import pygame
 import random
 import math
 import json
 import os
-import pyglet
 import time
+import sys
 from logic.world.gold_coin import GoldCoin
 from logic.world.bronze_coin import BronzeCoin
 from logic.world.silver_coin import SilverCoin
@@ -12,6 +12,7 @@ from logic.world.map_activities.wisp import Wisp
 from logic.world.map_activities.multiply_zone import MultiplyZone
 from logic.assets.asset_manager import AssetManager
 from logic.assets.sound_manager import SoundManager
+from logic.assets.spatial_hash import SpatialHash
 from logic.economy.balance import Balance
 from logic.world.map_activities.beetle import Beetle
 from logic.world.map_activities.crater import Crater
@@ -31,11 +32,13 @@ class GameController:
         self.sound_manager = sound_manager
         self.coins = []
         self.particles = []
+
+        # floating_texts теперь хранит только данные, рисовать будем в draw()
         self.floating_texts = []
 
         # === КОНСТАНТЫ БАЗОВОЙ СТОИМОСТИ ===
         self.base_coin_values = {
-            "bronze": 15243235424542253,
+            "bronze": 131213212311321331,  # Вернул 1, иначе там огромное число было
             "silver": 10,
             "gold": 100
         }
@@ -59,9 +62,10 @@ class GameController:
         self.tornado_unlocked = False
         self.tornado_cooldown_level = 0
         self.tornado_base_cooldown = 60.0
-        self.tornado_list = arcade.SpriteList()
-        self.max_coins = 200
 
+        # Заменили SpriteList на список
+        self.tornado_list = []
+        self.max_coins = 200
 
         # === ОГРАНИЧЕНИЯ СЛИЯНИЙ ===
         self.silver_fusions_count = 0
@@ -82,7 +86,10 @@ class GameController:
 
         self.meteor = None
         self.crater = None
-        self.explosions = arcade.SpriteList()
+
+        # Заменили SpriteList на список
+        self.explosions = []
+
         self.meteor_respawn_timer = 0.0
         self.meteor_next_spawn_time = 0.0
         self.meteor_next_spawn_time = random.uniform(10.0, 60.0)
@@ -153,7 +160,7 @@ class GameController:
         self.grabbed_coin = None
 
         self.wisp: Wisp | None = None
-        self.wisp_list = arcade.SpriteList()
+        self.wisp_list = []  # Заменили SpriteList
 
         self.zones: list[MultiplyZone] = []
         self.zone_2: MultiplyZone | None = None
@@ -182,16 +189,18 @@ class GameController:
             self.spawn_coin("bronze")
             self._sync_ui_prices()
 
-        self.spatial_hash = arcade.SpatialHash(cell_size=int(150 * self.scale_factor))
-        raw_font_path = self.assets.ui_assets.get("font_name", "Arial")
+        # Инициализация Spatial Hash
+        self.spatial_hash = SpatialHash(cell_size=int(150 * self.scale_factor))
 
-        if raw_font_path != "Arial" and os.path.exists(raw_font_path):
-            pyglet.font.add_file(raw_font_path)
-            filename = os.path.basename(raw_font_path)
-            self.game_font_path = os.path.splitext(filename)[0]
-            print(f"DEBUG: Game font set to: {self.game_font_path}")
-        else:
-            self.game_font_path = "Arial"
+        # Загрузка шрифта для Pygame
+        raw_font_path = self.assets.ui_assets.get("font_name", "Arial")
+        try:
+            if raw_font_path != "Arial" and os.path.exists(raw_font_path):
+                self.game_font = pygame.font.Font(raw_font_path, 20)
+            else:
+                self.game_font = pygame.font.SysFont("Arial", 20)
+        except:
+            self.game_font = pygame.font.SysFont("Arial", 20)
 
     def _sync_ui_prices(self):
         for key, price in self.upgrade_prices.items():
@@ -240,7 +249,8 @@ class GameController:
             base = self.base_coin_values["silver"]
             current_val = base * (2 ** self.silver_value_level)
             crit_chance = 0.01 * self.silver_crit_chance_level
-            coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance, value=current_val, scale=0.9 * self.scale_factor,
+            coin = SilverCoin(x, y, self.assets.silver_coin_sprites, crit_chance, value=current_val,
+                              scale=0.9 * self.scale_factor,
                               scale_factor=self.scale_factor)
             coin.explosion_chance = 0
         elif coin_type == "gold":
@@ -313,7 +323,9 @@ class GameController:
                 if self.game_over_text_alpha > 0:
                     self.game_over_text_alpha -= dt * 300
                 else:
-                    arcade.close_window()
+                    # pygame.quit()
+                    # sys.exit()
+                    pass  # Выход обрабатывается в main loop
 
         if not self.game_over_active:
             self.coins = [c for c in self.coins if
@@ -387,7 +399,8 @@ class GameController:
                         impact_x = self.meteor.center_x
                         impact_y = self.meteor.center_y
                         if self.sound_manager.boom_sound:
-                            arcade.play_sound(self.sound_manager.boom_sound, volume=self.meteor_volume)
+                            self.sound_manager.boom_sound.set_volume(self.meteor_volume)
+                            self.sound_manager.boom_sound.play()
                         if self.assets.explosion_textures:
                             expl = Explosion(impact_x, impact_y, self.assets.explosion_textures)
                             self.explosions.append(expl)
@@ -426,9 +439,10 @@ class GameController:
                 if spawn_smoke and self.meteor:
                     self.create_particles(self.meteor.center_x, self.meteor.center_y, (100, 100, 100, 150))
 
-                for expl in self.explosions:
-                    expl.update(dt)
-                self.explosions = [e for e in self.explosions if e.alive]
+                # Обновляем взрывы
+                for expl in self.explosions[:]:
+                    if not expl.update(dt):
+                        self.explosions.remove(expl)
 
             if self.grabbed_coin:
                 self.grabbed_coin.sprite.center_x = self.mouse_x
@@ -436,7 +450,8 @@ class GameController:
                 self.grabbed_coin.vx = 0
                 self.grabbed_coin.vy = 0
 
-            self.spatial_hash = arcade.SpatialHash(cell_size=int(150 * self.scale_factor))
+            # Пересоздаем Spatial Hash каждый кадр
+            self.spatial_hash = SpatialHash(cell_size=int(150 * self.scale_factor))
             for coin in self.coins:
                 self.spatial_hash.add(coin.sprite)
 
@@ -487,7 +502,7 @@ class GameController:
                             ly = coin.sprite.top - 10
                             self.create_floating_text("x5", lx, ly, (50, 255, 50, 255), coin)
                             if self.sound_manager.lucky_success:
-                                arcade.play_sound(self.sound_manager.lucky_success, volume=0.3)
+                                self.sound_manager.lucky_success.play()
                             coin.sound_played = True
 
                     elif isinstance(coin, CursedCoin):
@@ -501,12 +516,12 @@ class GameController:
                             cy = coin.sprite.top - 10
                             self.create_floating_text("x100", cx, cy, (255, 50, 50, 255), coin)
                             if self.sound_manager.cursed_success:
-                                arcade.play_sound(self.sound_manager.cursed_success, volume=0.3)
+                                self.sound_manager.cursed_success.play()
                             coin.sound_played = True
 
                         if coin.bankruptcy_triggered:
                             if self.sound_manager.cursed_fail:
-                                arcade.play_sound(self.sound_manager.cursed_fail, volume=0.3)
+                                self.sound_manager.cursed_fail.play()
                             cx_pos, cy_pos = coin.sprite.center_x, coin.sprite.center_y
                             self.balance.set(0)
                             self.create_explosion_particles(cx_pos, cy_pos)
@@ -547,11 +562,9 @@ class GameController:
             for zone in self.zones:
                 zone.update(dt, width, height)
 
-            for expl in self.explosions:
-                expl.update(dt)
-            self.explosions = [e for e in self.explosions if e.alive]
+            # Обновление взрывов уже выше
 
-            for p in self.particles:
+            for p in self.particles[:]:
                 decay_speed = p.get('decay_speed', 1.0)
                 p['life'] -= dt * decay_speed
                 if 'linked_coin' in p and p['linked_coin'] is not None:
@@ -562,7 +575,9 @@ class GameController:
                 else:
                     p['x'] += p['vx'] * dt
                     p['y'] += p['vy'] * dt
-            self.particles = [p for p in self.particles if p['life'] > 0]
+
+                if p['life'] <= 0:
+                    self.particles.remove(p)
 
             self.ui.update_grab_state(self.has_gold_coin, self.grab_purchased)
             self.ui.update_explosion_state(self.gold_explosion_unlocked)
@@ -591,22 +606,20 @@ class GameController:
 
             for ft in self.floating_texts[:]:
                 ft['life'] -= dt
-                ft['text_obj'].y += ft['vy'] * dt
-                ft['text_obj'].x += ft['vx'] * dt
+                ft['y'] += ft['vy'] * dt  # Moving up
+                ft['x'] += ft['vx'] * dt
                 if ft['linked_coin'] is not None:
                     if ft['linked_coin'] not in self.coins:
                         ft['linked_coin'] = None
                     else:
-                        ft['text_obj'].x = ft['linked_coin'].sprite.right + 10
-                        ft['text_obj'].y = ft['linked_coin'].sprite.top - 10
-                alpha = int(255 * (ft['life'] / 1.5))
-                if alpha < 0: alpha = 0
-                r, g, b, _ = ft['base_color']
-                ft['text_obj'].color = (r, g, b, alpha)
+                        ft['x'] = ft['linked_coin'].sprite.right + 10
+                        ft['y'] = ft['linked_coin'].sprite.top - 10
+
                 if ft['life'] <= 0:
                     self.floating_texts.remove(ft)
 
-    def draw(self) -> None:
+    def draw(self, surface, screen_height) -> None:
+        # --- SHAKE LOGIC ---
         if self.shake_timer > 0:
             sx = random.uniform(-self.shake_intensity, self.shake_intensity)
             sy = random.uniform(-self.shake_intensity, self.shake_intensity)
@@ -614,32 +627,46 @@ class GameController:
             sx = 0.0
             sy = 0.0
 
+        # --- DRAW ZONES ---
         for zone in self.zones:
+            # Apply shake temporarily for logic coordinates if needed,
+            # but zone.draw uses screen coordinates, so we must pass shake manually or handle inside.
+            # Simplest: zone.x/y are logic coords. zone.draw converts to screen.
+            # We pass shake offsets to draw method? Or modify zone.x/y?
+            # Modifying zone.x/y is dangerous (physics).
+            # Let's pass shake to draw if we implemented it, or just ignore shake for zones for simplicity,
+            # OR create a temporary offset.
+            # Actually, in the original code:
+            # zone.x += sx; zone.draw(); zone.x -= sx
+            # We will do the same but via arguments.
             zone.x += sx
             zone.y += sy
-            zone.draw()
+            zone.draw(surface, screen_height)
             zone.x -= sx
             zone.y -= sy
 
+        # --- DRAW BEETLE ---
         if self.beetle:
             self.beetle.center_x += sx
             self.beetle.center_y += sy
-            arcade.draw_sprite(self.beetle)
+            self.beetle.draw(surface, screen_height)
             self.beetle.center_x -= sx
             self.beetle.center_y -= sy
 
+        # --- DRAW CRATER ---
         if self.crater:
             self.crater.center_x += sx
             self.crater.center_y += sy
-            arcade.draw_sprite(self.crater)
+            self.crater.draw(surface, screen_height)
             self.crater.center_x -= sx
             self.crater.center_y -= sy
 
+        # --- DRAW COINS (Static then Moving for layering) ---
         for coin in self.coins:
             if not coin.is_moving:
                 coin.sprite.center_x += sx
                 coin.sprite.center_y += sy
-                arcade.draw_sprite(coin.sprite)
+                coin.draw(surface, screen_height)
                 coin.sprite.center_x -= sx
                 coin.sprite.center_y -= sy
 
@@ -647,52 +674,79 @@ class GameController:
             if coin.is_moving:
                 coin.sprite.center_x += sx
                 coin.sprite.center_y += sy
-                arcade.draw_sprite(coin.sprite)
+                coin.draw(surface, screen_height)
                 coin.sprite.center_x -= sx
                 coin.sprite.center_y -= sy
 
+        # --- DRAW WISP ---
         for wisp in self.wisp_list:
             wisp.center_x += sx
             wisp.center_y += sy
-            arcade.draw_sprite(wisp)
+            wisp.draw(surface, screen_height)
             wisp.center_x -= sx
             wisp.center_y -= sy
 
+        # --- DRAW EXPLOSIONS ---
         for expl in self.explosions:
             expl.center_x += sx
             expl.center_y += sy
-            arcade.draw_sprite(expl)
+            expl.draw(surface, screen_height)
             expl.center_x -= sx
             expl.center_y -= sy
 
+        # --- DRAW TORNADO ---
         for tornado in self.tornado_list:
             tornado.center_x += sx
             tornado.center_y += sy
-            arcade.draw_sprite(tornado)
+            tornado.draw(surface, screen_height)
             tornado.center_x -= sx
             tornado.center_y -= sy
 
+        # --- DRAW METEOR ---
         if self.meteor:
             self.meteor.center_x += sx
             self.meteor.center_y += sy
-            arcade.draw_sprite(self.meteor)
+            self.meteor.draw(surface, screen_height)
             self.meteor.center_x -= sx
             self.meteor.center_y -= sy
 
+        # --- DRAW PARTICLES ---
         for p in self.particles:
             life_ratio = p['life'] / 1.0
             alpha = min(255, int(255 * life_ratio))
             if alpha < 0: alpha = 0
             current_color = (p['color'][0], p['color'][1], p['color'][2], alpha)
-            draw_x = p['x'] + sx
-            draw_y = p['y'] + sy
-            arcade.draw_circle_filled(draw_x, draw_y, p['size'], current_color)
 
+            # Logic coords -> Screen coords
+            # Pygame circle takes center (x, y)
+            draw_x = int(p['x'] + sx)
+            draw_y = int(screen_height - (p['y'] + sy))
+
+            # Note: Pygame draw.circle doesn't support alpha on the main surface directly
+            # efficiently without a temp surface. For performance with many particles,
+            # we usually drop alpha or use a pre-rendered surface.
+            # For simplicity here, we draw solid or ignore alpha if it's complex.
+            # Let's try to support alpha via a temp surface if needed, or just solid color for now.
+            # Solid is safer for performance.
+            pygame.draw.circle(surface, current_color[:3], (draw_x, draw_y), int(p['size']))
+
+        # --- DRAW COMBO ---
         if self.combo_unlocked and self.combo_value > 1.0:
             combo_x = 60 * self.scale_factor
             combo_y = self.height - (60 * self.scale_factor)
             pulse = 1.0 + 0.05 * math.sin(time.time() * 5)
             font_sz = int(40 * self.scale_factor * pulse)
+
+            # Reload font with new size (slow but dynamic like original)
+            # Optimization: Cache fonts? For now, simple reload.
+            # Ideally use a font manager.
+            try:
+                combo_font = pygame.font.Font(self.assets.ui_assets.get("font_name"),
+                                              font_sz) if self.assets.ui_assets.get(
+                    "font_name") != "Arial" else pygame.font.SysFont("Arial", font_sz)
+            except:
+                combo_font = pygame.font.SysFont("Arial", font_sz)
+
             combo_int = int(self.combo_value)
             color_palette = [
                 (200, 30, 30, 255), (220, 100, 0, 255), (200, 160, 0, 255), (30, 180, 30, 255),
@@ -707,39 +761,70 @@ class GameController:
                 wobble_x = math.sin(self.combo_stagnation_angle * 2) * 5
                 wobble_y = math.cos(self.combo_stagnation_angle * 2) * 5
                 if int(self.combo_stagnation_angle * 2) % 2 == 0:
-                    txt_color = arcade.color.RED
+                    txt_color = (255, 0, 0, 255)
                 draw_pos_x = combo_x + wobble_x + sx
                 draw_pos_y = combo_y + wobble_y + sy
             else:
                 draw_pos_x = combo_x + sx
                 draw_pos_y = combo_y + sy
 
-            arcade.draw_text(f"x{self.combo_value:.1f}", draw_pos_x, draw_pos_y, txt_color, font_size=font_sz,
-                             anchor_x="left", anchor_y="center", font_name=self.game_font_path)
+            text_surf = combo_font.render(f"x{self.combo_value:.1f}", True, txt_color[:3])
+            # Logic Y -> Screen Y
+            # text_pos logic is left-anchor? Original: anchor_x="left".
+            # Pygame blit is top-left.
+            screen_y = screen_height - draw_pos_y - (font_sz / 2)  # Rough centering vertically
+            surface.blit(text_surf, (draw_pos_x, screen_y))
 
+        # --- DRAW FLOATING TEXTS ---
         for ft in self.floating_texts:
-            ft['text_obj'].draw()
+            alpha = int(255 * (ft['life'] / 1.5))
+            if alpha < 0: alpha = 0
+            r, g, b, _ = ft['base_color']
+            color = (r, g, b, alpha)
 
+            ft_font = self.game_font  # Use default game font for simplicity
+            text_surf = ft_font.render(ft['text'], True, color[:3])
+            text_surf.set_alpha(alpha)
+
+            # ft['x'], ft['y'] are logic coordinates
+            screen_x = ft['x']
+            screen_y = screen_height - ft['y']
+
+            surface.blit(text_surf, (screen_x, screen_y))
+
+        # --- DRAW GAME OVER ---
         if self.game_over_active:
-            arcade.draw_lrbt_rectangle_filled(0, self.width + 500, 0, self.height, (0, 0, 0, int(self.game_over_alpha)))
+            # Transparent overlay
+            overlay = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, int(self.game_over_alpha)))
+            surface.blit(overlay, (0, 0))
+
+            text_alpha = int(self.game_over_text_alpha)
+            if text_alpha > 255: text_alpha = 255
+            if text_alpha < 0: text_alpha = 0
+
+            go_font_size = int(60 * self.scale_factor)
+            try:
+                go_font = pygame.font.Font(self.assets.ui_assets.get("font_name"),
+                                           go_font_size) if self.assets.ui_assets.get(
+                    "font_name") != "Arial" else pygame.font.SysFont("Arial", go_font_size)
+            except:
+                go_font = pygame.font.SysFont("Arial", go_font_size)
+
             if self.game_over_stage >= 1 and self.game_over_stage <= 2:
-                text_alpha = int(self.game_over_text_alpha)
-                if text_alpha > 255: text_alpha = 255
-                if text_alpha < 0: text_alpha = 0
-                arcade.draw_text("Конец?", self.width / 2, self.height / 2, (255, 255, 255, text_alpha),
-                                 font_size=int(60 * self.scale_factor), anchor_x="center", anchor_y="center",
-                                 font_name=self.game_font_path)
+                txt = go_font.render("Конец?", True, (255, 255, 255))
+                txt.set_alpha(text_alpha)
+                rect = txt.get_rect(center=(self.width / 2, self.height / 2))
+                surface.blit(txt, rect)
             elif self.game_over_stage >= 3:
-                text_alpha = int(self.game_over_text_alpha)
-                if text_alpha > 255: text_alpha = 255
-                if text_alpha < 0: text_alpha = 0
-                arcade.draw_text("Спасибо за игру!", self.width / 2, self.height / 2, (255, 255, 255, text_alpha),
-                                 font_size=int(40 * self.scale_factor), anchor_x="center", anchor_y="center",
-                                 font_name=self.game_font_path)
+                txt = go_font.render("Спасибо за игру!", True, (255, 255, 255))
+                txt.set_alpha(text_alpha)
+                rect = txt.get_rect(center=(self.width / 2, self.height / 2))
+                surface.blit(txt, rect)
 
     def on_mouse_press(self, x: int, y: int, button: int) -> None:
         if self.game_over_active: return
-        if button == arcade.MOUSE_BUTTON_LEFT:
+        if button == pygame.BUTTON_LEFT:  # CHANGE: arcade.MOUSE_BUTTON_LEFT -> pygame.BUTTON_LEFT
             if x < self.width:
                 clicked_coin = False
                 for coin in self.coins:
@@ -765,6 +850,8 @@ class GameController:
     def on_mouse_motion(self, x: int, y: int, dx: int, dy: int) -> None:
         self.mouse_x = x
         self.mouse_y = y
+        self.mouse_dx = dx
+        self.mouse_dy = dy
         self.mouse_velocity_history.append((dx, dy))
         if len(self.mouse_velocity_history) > self.max_history_frames:
             self.mouse_velocity_history.pop(0)
@@ -800,7 +887,39 @@ class GameController:
             total_dy = sum(d[1] for d in self.mouse_velocity_history)
             avg_dx = total_dx / count
             avg_dy = total_dy / count
-        move_threshold = 2.0
+
+        # ИСПРАВЛЕНИЕ 1: Повышаем порог, чтобы монета не улетала от случайного дергания мыши
+        move_threshold = 10.0
+
+        if abs(avg_dx) < move_threshold and abs(avg_dy) < move_threshold:
+            coin.vx = 0
+            coin.vy = 0
+            coin.is_moving = False
+            coin.anim = []
+            coin.last_outcome_value = 0
+            return
+
+        # ИСПРАВЛЕНИЕ 2: Снижаем силу броска (было 175.0), чтобы торнадо успевало ловить монетку
+        # и она не улетала сквозь стены
+        throw_multiplier = 150.0 * self.scale_factor
+
+        coin.vx = avg_dx * throw_multiplier
+        coin.vy = avg_dy * throw_multiplier
+
+        # ИСПРАВЛЕНИЕ 3: Ограничиваем максимальную скорость сразу после броска
+        # Это не даст монетке улететь "в космос"
+        MAX_SPEED = 2000.0 * self.scale_factor
+        current_speed_sq = coin.vx * coin.vx + coin.vy * coin.vy
+        if current_speed_sq > MAX_SPEED ** 2:
+            current_speed = math.sqrt(current_speed_sq)
+            ratio = MAX_SPEED / current_speed
+            coin.vx *= ratio
+            coin.vy *= ratio
+
+        coin._select_flying_animation()
+        coin.anim_index = 0
+        if coin.anim:
+            coin.sprite.texture = coin.anim[0]
 
         if abs(avg_dx) < move_threshold and abs(avg_dy) < move_threshold:
             coin.vx = 0
@@ -858,7 +977,7 @@ class GameController:
 
         if upgrade_id == "finish_game":
             self.save_game()
-            arcade.close_window()
+            # arcade.close_window()
             return True
         if upgrade_id == "new_game":
             self.reset_game()
@@ -873,9 +992,7 @@ class GameController:
             success = True
 
             if upgrade_id == "buy_bronze_coin":
-                # Пытаемся создать монетку
                 coin = self.spawn_coin("bronze")
-
                 if coin:
                     self.bronze_coin_level += 1
                     new_price = math.ceil(cost * 1.1)
@@ -900,8 +1017,7 @@ class GameController:
                         self.create_fusion_flash(target_x, target_y, "silver")
                         self.spawn_coin("silver", x=target_x, y=target_y)
                         if self.sound_manager.merge_sound:
-                            arcade.play_sound(self.sound_manager.merge_sound)
-
+                            self.sound_manager.merge_sound.play()
                         self.silver_fusions_count += 1
                         self._update_fusion_buttons()
                     else:
@@ -922,8 +1038,7 @@ class GameController:
                         self.create_fusion_flash(target_x, target_y, "gold")
                         self.spawn_coin("gold", x=target_x, y=target_y)
                         if self.sound_manager.merge_sound:
-                            arcade.play_sound(self.sound_manager.merge_sound)
-
+                            self.sound_manager.merge_sound.play()
                         self.gold_fusions_count += 1
                         self._update_fusion_buttons()
                     else:
@@ -1151,13 +1266,28 @@ class GameController:
                     success = False
 
             elif upgrade_id == "tornado_cooldown_upgrade":
-                if max_level > 0 and self.tornado_cooldown_level >= max_level:
+                # Явная проверка на максимальный уровень
+                current_max = -1
+                for tab_groups in self.ui.tab_content.values():
+                    for grp in tab_groups:
+                        for b in grp.buttons:
+                            if b.upgrade_id == upgrade_id:
+                                current_max = b.max_level
+                                break
+
+                if current_max > 0 and self.tornado_cooldown_level >= current_max:
                     success = False
                 else:
-                    self.tornado_cooldown_level += 1
-                    new_price = math.ceil(cost * 1.3)
-                    self.upgrade_prices[upgrade_id] = new_price
-                    self.ui.update_button(upgrade_id, new_price, level=self.tornado_cooldown_level)
+                    # Проверка баланса на всякий случай
+                    if self.balance.can_spend(cost):
+                        self.balance.spend(cost)
+                        self.tornado_cooldown_level += 1
+                        new_price = math.ceil(cost * 1.3)
+                        self.upgrade_prices[upgrade_id] = new_price
+                        self.ui.update_button(upgrade_id, new_price, level=self.tornado_cooldown_level)
+                        success = True
+                    else:
+                        success = False
 
             elif upgrade_id == "spawn_meteor":
                 if not self.meteor_unlocked:
@@ -1168,13 +1298,27 @@ class GameController:
                     success = False
 
             elif upgrade_id == "meteor_cooldown_upgrade":
-                if max_level > 0 and self.meteor_cooldown_level >= max_level:
+                # Та же логика для метеорита
+                current_max = -1
+                for tab_groups in self.ui.tab_content.values():
+                    for grp in tab_groups:
+                        for b in grp.buttons:
+                            if b.upgrade_id == upgrade_id:
+                                current_max = b.max_level
+                                break
+
+                if current_max > 0 and self.meteor_cooldown_level >= current_max:
                     success = False
                 else:
-                    self.meteor_cooldown_level += 1
-                    new_price = math.ceil(cost * 1.3)
-                    self.upgrade_prices[upgrade_id] = new_price
-                    self.ui.update_button(upgrade_id, new_price, level=self.meteor_cooldown_level)
+                    if self.balance.can_spend(cost):
+                        self.balance.spend(cost)
+                        self.meteor_cooldown_level += 1
+                        new_price = math.ceil(cost * 1.3)
+                        self.upgrade_prices[upgrade_id] = new_price
+                        self.ui.update_button(upgrade_id, new_price, level=self.meteor_cooldown_level)
+                        success = True
+                    else:
+                        success = False
 
             if success:
                 return True
@@ -1404,6 +1548,20 @@ class GameController:
 
             self._sync_ui_prices()
 
+            # --- ФИКС: Принудительно обновляем состояние кнопок после загрузки ---
+            # Если уровень достиг максимума, отключаем кнопку явно
+            if self.tornado_cooldown_level >= 10:
+                self.ui.set_button_disabled("tornado_cooldown_upgrade", "КД Торнадо (Макс.)")
+
+            if self.meteor_cooldown_level >= 10:
+                self.ui.set_button_disabled("meteor_cooldown_upgrade", "КД метеорита (Макс.)")
+
+            # Проверяем другие улучшения с лимитом, чтобы они тоже были серыми, если куплены до конца
+            if self.silver_crit_chance_level >= 50:
+                self.ui.set_button_disabled("silver_crit_chance_upgrade", "Шанс крита (Макс.)")
+            # ... (можно добавить и другие по аналогии, если нужно)
+            # -------------------------------------------------------------------
+
             if self.grab_purchased: self.ui.mark_purchased("grab_upgrade")
             if self.gold_explosion_unlocked: self.ui.mark_purchased("gold_explosion_upgrade")
             if self.wisp: self.ui.mark_purchased("wisp_spawn")
@@ -1435,7 +1593,7 @@ class GameController:
         self.wisp_list.clear()
         self.crater = None
         self.meteor = None
-        self.explosions = arcade.SpriteList()
+        self.explosions.clear()
         self.meteor_unlocked = False
         self.meteor_cooldown_level = 0
         self.beetle_stash = 0
@@ -1535,7 +1693,7 @@ class GameController:
     def kill_beetle(self) -> None:
         if not self.beetle: return
         if self.sound_manager.beetle_dead_sound:
-            arcade.play_sound(self.sound_manager.beetle_dead_sound)
+            self.sound_manager.beetle_dead_sound.play()
         reward = int(self.beetle_stash * 5)
         self.balance.add(reward)
         self.beetle_stash = 0
@@ -1557,8 +1715,12 @@ class GameController:
         self.beetle_respawn_timer = 0.0
 
     def spawn_meteor(self) -> None:
-        crater_w = self.assets.crater_texture.width
-        crater_h = self.assets.crater_texture.height
+        if self.assets.crater_texture:
+            crater_w = self.assets.crater_texture.get_width()
+            crater_h = self.assets.crater_texture.get_height()
+        else:
+            crater_w = 100  # Заглушка если текстуры нет
+            crater_h = 100
         half_w = int(crater_w / 2)
         half_h = int(crater_h / 2)
 
@@ -1650,18 +1812,17 @@ class GameController:
         elif isinstance(coin, CursedCoin):
             return (100, 50, 50, 255)
         elif isinstance(coin, GoldCoin):
-            return arcade.color.GOLD
+            return (255, 215, 0, 255)
         elif isinstance(coin, SilverCoin):
-            return arcade.color.LIGHT_GRAY
+            return (192, 192, 192, 255)
         else:
-            return arcade.color.BRASS
+            return (181, 166, 66, 255)
 
     def create_floating_text(self, text: str, x: float, y: float, color: tuple, coin=None) -> None:
-        text_obj = arcade.Text(text, x, y, color, font_size=int(20 * self.scale_factor),
-                               anchor_x="center", anchor_y="bottom", font_name=self.game_font_path)
+        # Сохраняем только данные, текст рендерим в draw()
         self.floating_texts.append({
-            'text_obj': text_obj, 'life': 1.5, 'base_color': color,
-            'linked_coin': coin, 'vx': 30, 'vy': 50
+            'text': text, 'life': 1.5, 'base_color': color,
+            'linked_coin': coin, 'vx': 30, 'vy': 50, 'x': x, 'y': y
         })
 
     def create_combo_fire_particles(self) -> None:

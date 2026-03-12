@@ -1,19 +1,22 @@
-import arcade
+import pygame
 import math
 import random
+from logic.assets.sprite_pygame import PygameSprite
 
 
-class Wisp(arcade.Sprite):
+class Wisp(PygameSprite):
     def __init__(self, x, y, sprites_list, speed=100, scale=1.0, scale_factor=1.0):
-        super().__init__()
-
+        # 1. Определяем начальную текстуру
+        start_texture = None
         self.textures = sprites_list
         if self.textures:
-            self.texture = self.textures[0]
+            start_texture = self.textures[0]
+
+        # 2. Инициализируем родительский класс PygameSprite
+        super().__init__(image=start_texture, scale=scale)
 
         self.center_x = x
         self.center_y = y
-        self.scale = scale
         self.scale_factor = scale_factor
 
         self.speed = speed
@@ -27,8 +30,12 @@ class Wisp(arcade.Sprite):
 
         self.hitbox_factor = 0.6
 
-        s_val = self.scale[0] if isinstance(self.scale, tuple) else self.scale
-        self.radius = (self.texture.width * s_val * self.hitbox_factor) / 2
+        # ВАЖНО: Пересчитываем радиус ПОСЛЕ инициализации текстуры
+        # Используем .get_width(), так как это метод pygame.Surface
+        if self.texture:
+            self.radius = (self.texture.get_width() * self.scale * self.hitbox_factor) / 2
+        else:
+            self.radius = 10
 
     def update(self, dt: float, width: int, height: int, coins: list, grabbed_coin) -> None:
         # 1. Движение
@@ -73,15 +80,9 @@ class Wisp(arcade.Sprite):
 
     def _handle_coin_collisions(self, coins: list, grabbed_coin) -> None:
         for coin in coins:
-
-            if coin is grabbed_coin:
-                continue
-
-            if coin.wisp_immunity_timer > 0:
-                continue
-            if coin.is_moving:
-                continue
-            # =========================================================
+            if coin is grabbed_coin: continue
+            if coin.wisp_immunity_timer > 0: continue
+            if coin.is_moving: continue
 
             dx = coin.sprite.center_x - self.center_x
             dy = coin.sprite.center_y - self.center_y
@@ -105,12 +106,11 @@ class Wisp(arcade.Sprite):
 
     def upgrade_scale(self, amount_percent: float):
         multiplier = 1.0 + amount_percent
+        self.scale = self.scale * multiplier
 
-        if isinstance(self.scale, tuple):
-            sx, sy = self.scale
-            self.scale = (sx * multiplier, sy * multiplier)
-        else:
-            self.scale *= multiplier
+        # Пересчитываем радиус после изменения масштаба
+        if self.texture:
+            self.radius = (self.texture.get_width() * self.scale * self.hitbox_factor) / 2
 
-        s_val = self.scale[0] if isinstance(self.scale, tuple) else self.scale
-        self.radius = (self.texture.width * s_val * self.hitbox_factor) / 2
+    def draw(self, surface, screen_height) -> None:
+        super().draw(surface, screen_height)

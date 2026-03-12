@@ -1,6 +1,7 @@
-import arcade
+import pygame
 import os
 import random
+import sys
 
 
 class SoundManager:
@@ -30,22 +31,25 @@ class SoundManager:
         self.cursed_fail = None
 
     def load_all(self) -> None:
-        import sys
+        # Используем ту же логику путей, что и AssetManager
         if getattr(sys, 'frozen', False):
             base_dir = sys._MEIPASS
         else:
-            base_dir = os.getcwd()
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(script_dir))
+            base_dir = project_root
 
         base_sound_dir = os.path.join(base_dir, "view", "sounds")
+        print(f"DEBUG SoundManager: Loading sounds from {base_sound_dir}")
 
         print("--- Loading Bronze Sounds ---")
         bronze_paths = [
-            os.path.join(base_sound_dir, "bronze_sounds/tossing"),
-            os.path.join(base_sound_dir, "silver_and_bronze_sounds/tossing")
+            os.path.join(base_sound_dir, "bronze_sounds", "tossing"),
+            os.path.join(base_sound_dir, "silver_and_bronze_sounds", "tossing")
         ]
         bronze_paths_land = [
-            os.path.join(base_sound_dir, "bronze_sounds/landing"),
-            os.path.join(base_sound_dir, "silver_and_bronze_sounds/landing")
+            os.path.join(base_sound_dir, "bronze_sounds", "landing"),
+            os.path.join(base_sound_dir, "silver_and_bronze_sounds", "landing")
         ]
 
         self._load_sounds_from_dir(bronze_paths, self.bronze_toss_sounds, "Bronze Toss")
@@ -53,12 +57,12 @@ class SoundManager:
 
         print("--- Loading Silver Sounds ---")
         silver_paths = [
-            os.path.join(base_sound_dir, "silver_sounds/tossing"),
-            os.path.join(base_sound_dir, "silver_and_bronze_sounds/tossing")
+            os.path.join(base_sound_dir, "silver_sounds", "tossing"),
+            os.path.join(base_sound_dir, "silver_and_bronze_sounds", "tossing")
         ]
         silver_paths_land = [
-            os.path.join(base_sound_dir, "silver_sounds/landing"),
-            os.path.join(base_sound_dir, "silver_and_bronze_sounds/landing")
+            os.path.join(base_sound_dir, "silver_sounds", "landing"),
+            os.path.join(base_sound_dir, "silver_and_bronze_sounds", "landing")
         ]
 
         self._load_sounds_from_dir(silver_paths, self.silver_toss_sounds, "Silver Toss")
@@ -66,11 +70,11 @@ class SoundManager:
 
         print("--- Loading Gold Sounds ---")
         self._load_sounds_from_dir(
-            [os.path.join(base_sound_dir, "gold_sounds/tossing")],
+            [os.path.join(base_sound_dir, "gold_sounds", "tossing")],
             self.gold_toss_sounds, "Gold Toss"
         )
         self._load_sounds_from_dir(
-            [os.path.join(base_sound_dir, "gold_sounds/landing")],
+            [os.path.join(base_sound_dir, "gold_sounds", "landing")],
             self.gold_landing_sounds, "Gold Land"
         )
 
@@ -80,69 +84,68 @@ class SoundManager:
         print(f"Silver Land: {len(self.silver_landing_sounds)}")
         print(f"Gold Toss: {len(self.gold_toss_sounds)}")
         print(f"Gold Land: {len(self.gold_landing_sounds)}")
-        print("--- Loading Beetle Sound ---")
 
-        beetle_sound_dir = os.path.join(base_sound_dir, "beetle")
-        beetle_sound_path = os.path.join(beetle_sound_dir, "beetle_dead.mp3")
+        # Загрузка отдельных файлов (beetle, boom и т.д.)
+        # Мы используем _load_sound_safe, который сам найдет нужный формат
 
-        if os.path.exists(beetle_sound_path):
-            self.beetle_dead_sound = arcade.load_sound(beetle_sound_path)
-            print("  -> Loaded Beetle sound")
-        else:
-            print(f"  -> WARNING: Beetle sound not found at {beetle_sound_path}")
+        print("--- Loading Special Sounds ---")
+        self.beetle_dead_sound = self._load_sound_safe(base_sound_dir, "beetle", "beetle_dead")
+        self.boom_sound = self._load_sound_safe(base_sound_dir, "boom", "boom")
+        self.tornado_sound = self._load_sound_safe(base_sound_dir, "tornado", "tornado")
+        self.merge_sound = self._load_sound_safe(base_sound_dir, "merge", "merge")
 
-        print("--- Loading Meteor Sounds ---")
-        boom_path = os.path.join(base_sound_dir, "boom", "boom.mp3")
-        if os.path.exists(boom_path):
-            self.boom_sound = arcade.load_sound(boom_path)
-            print("  -> Loaded Boom sound")
-        else:
-            print("  -> WARNING: Boom sound not found at view/sounds/boom/boom.mp3")
+        self.lucky_success = self._load_sound_safe(base_sound_dir, "lucky_coin", "lucky_coin_win")
+        self.lucky_fail = self._load_sound_safe(base_sound_dir, "lucky_coin",
+                                                "lucky_coin_win")  # Примечание: у тебя в логике было win/win, оставил как есть
+        self.cursed_success = self._load_sound_safe(base_sound_dir, "cursed_coin", "cursed_coin_win")
+        self.cursed_fail = self._load_sound_safe(base_sound_dir, "cursed_coin", "cursed_coin_fail")
 
-        print("--- Loading Tornado Sound ---")
-        tornado_path = os.path.join(base_sound_dir, "tornado", "tornado.mp3")
-        if os.path.exists(tornado_path):
-            self.tornado_sound = arcade.load_sound(tornado_path)
-            print("  -> Loaded Tornado sound")
-        else:
-            print("  -> WARNING: Tornado sound not found")
+    def _load_sound_safe(self, base_dir: str, folder_name: str, filename: str):
+        """
+        Ищет звук в папке base_dir/folder_name/filename.
+        Проверяет расширения в приоритете: .ogg, .wav, .mp3
+        """
+        dir_path = os.path.join(base_dir, folder_name)
+        if not os.path.exists(dir_path):
+            print(f"  -> WARNING: Sound folder not found {dir_path}")
+            return None
 
-        print("--- Loading Merge Sound ---")
-        merge_path = os.path.join(base_sound_dir, "merge", "merge.mp3")
-        if os.path.exists(merge_path):
-            self.merge_sound = arcade.load_sound(merge_path)
-            print("  -> Loaded Merge sound")
-        else:
-            print("  WARNING: Merge sound not found at view/sounds/merge/merge.mp3")
-        print("--- Loading Special Coin Sounds ---")
+        # Приоритет форматов: OGG (лучший для Pygame) -> WAV -> MP3
+        extensions = [".ogg", ".wav", ".mp3"]
 
-        self.lucky_success = self._load_sound_safe(os.path.join(base_sound_dir, "lucky_coin"), "lucky_coin_win")
+        for ext in extensions:
+            path = os.path.join(dir_path, f"{filename}{ext}")
+            if os.path.exists(path):
+                try:
+                    snd = pygame.mixer.Sound(path)
+                    print(f"  -> Loaded {folder_name}/{filename}{ext}")
+                    return snd
+                except Exception as e:
+                    print(f"  -> WARNING: Failed to load {path}: {e}")
+                    continue  # Пробуем следующий формат
 
-        self.lucky_fail = self._load_sound_safe(os.path.join(base_sound_dir, "lucky_coin"), "lucky_coin_win")
-
-        self.cursed_success = self._load_sound_safe(os.path.join(base_sound_dir, "cursed_coin"), "cursed_coin_win")
-
-        self.cursed_fail = self._load_sound_safe(os.path.join(base_sound_dir, "cursed_coin"), "cursed_coin_fail")
-
-    def _load_sound_safe(self, base_dir: str, filename: str):
-        """Вспомогательный метод для загрузки звука"""
-        path = os.path.join(base_dir, f"{filename}.mp3")
-        if os.path.exists(path):
-            return arcade.load_sound(path)
-        print(f"  -> WARNING: Sound {filename} not found")
+        print(f"  -> WARNING: Sound {filename} not found in {dir_path} (tried ogg, wav, mp3)")
         return None
 
     def _load_sounds_from_dir(self, directory_paths: list[str], target_list: list, label: str) -> None:
-        """Ищет звуки в первой доступной папке из списка directory_paths"""
+        """
+        Загружает ВСЕ файлы звуковых форматов из указанных папок.
+        """
         for directory_path in directory_paths:
             if os.path.exists(directory_path):
                 files = sorted(os.listdir(directory_path))
                 count = 0
                 for f in files:
-                    if f.endswith(".mp3") or f.endswith(".wav"):
+                    # Проверяем по расширению (приоритет не важен, грузим что есть)
+                    if f.lower().endswith((".ogg", ".wav", ".mp3")):
                         sound_path = os.path.join(directory_path, f)
-                        target_list.append(arcade.load_sound(sound_path))
-                        count += 1
+                        try:
+                            snd = pygame.mixer.Sound(sound_path)
+                            snd.set_volume(0.5)
+                            target_list.append(snd)
+                            count += 1
+                        except Exception as e:
+                            print(f"  -> WARNING: Could not load sound {f}: {e}")
 
                 if count > 0:
                     print(f"  -> Loaded {count} {label} from {os.path.basename(directory_path)}")
@@ -161,7 +164,7 @@ class SoundManager:
             self._last_bronze_toss = sound
 
         if sound:
-            arcade.play_sound(sound)
+            sound.play()
 
     def play_land(self, coin_type: str) -> None:
         if coin_type == "gold":
@@ -175,18 +178,14 @@ class SoundManager:
             self._last_bronze_land = sound
 
         if sound:
-            arcade.play_sound(sound)
+            sound.play()
 
     def _pick_sound(self, pool: list, last_sound: any) -> any:
         if not pool:
             return None
-
         if len(pool) == 1:
             return pool[0]
-
         candidates = [s for s in pool if s != last_sound]
-
         if not candidates:
             return random.choice(pool)
-
         return random.choice(candidates)
