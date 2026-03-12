@@ -864,11 +864,24 @@ class GameController:
                 dy = y - coin.sprite.center_y
                 if dx * dx + dy * dy < (coin.radius * coin.radius):
                     self.grabbed_coin = coin
-                    coin.is_moving = True
+
+                    # 1. Отключаем торнадо
+                    coin.tornado_hit = False
+
+                    # 2. Переводим в режим "на земле"
+                    coin.is_moving = False
+                    coin.is_grabbed = True
                     coin.vx = 0
                     coin.vy = 0
+
+                    # 3. Восстанавливаем текстуру и размер
+                    face_key = coin.current_face if hasattr(coin, 'current_face') else "heads"
+                    correct_texture = coin.sprites.get(face_key, coin.sprites["heads"])
+                    coin.sprite.texture = correct_texture
+                    coin.sprite.scale = coin.scale
+
                     coin.anim = []
-                    coin.fixed_outcome_texture = coin.sprite.texture
+
                     self.mouse_x = x
                     self.mouse_y = y
                     self.mouse_velocity_history = []
@@ -878,6 +891,7 @@ class GameController:
         if not self.grabbed_coin: return
         coin = self.grabbed_coin
         self.grabbed_coin = None
+        coin.is_grabbed = False
 
         avg_dx = 0
         avg_dy = 0
@@ -888,26 +902,18 @@ class GameController:
             avg_dx = total_dx / count
             avg_dy = total_dy / count
 
-        # ИСПРАВЛЕНИЕ 1: Повышаем порог, чтобы монета не улетала от случайного дергания мыши
         move_threshold = 10.0
 
         if abs(avg_dx) < move_threshold and abs(avg_dy) < move_threshold:
             coin.vx = 0
             coin.vy = 0
-            coin.is_moving = False
-            coin.anim = []
-            coin.last_outcome_value = 0
             return
 
-        # ИСПРАВЛЕНИЕ 2: Снижаем силу броска (было 175.0), чтобы торнадо успевало ловить монетку
-        # и она не улетала сквозь стены
         throw_multiplier = 150.0 * self.scale_factor
 
         coin.vx = avg_dx * throw_multiplier
         coin.vy = avg_dy * throw_multiplier
 
-        # ИСПРАВЛЕНИЕ 3: Ограничиваем максимальную скорость сразу после броска
-        # Это не даст монетке улететь "в космос"
         MAX_SPEED = 2000.0 * self.scale_factor
         current_speed_sq = coin.vx * coin.vx + coin.vy * coin.vy
         if current_speed_sq > MAX_SPEED ** 2:
@@ -916,22 +922,7 @@ class GameController:
             coin.vx *= ratio
             coin.vy *= ratio
 
-        coin._select_flying_animation()
-        coin.anim_index = 0
-        if coin.anim:
-            coin.sprite.texture = coin.anim[0]
-
-        if abs(avg_dx) < move_threshold and abs(avg_dy) < move_threshold:
-            coin.vx = 0
-            coin.vy = 0
-            coin.is_moving = False
-            coin.anim = []
-            coin.last_outcome_value = 0
-            return
-
-        throw_multiplier = 175.0 * self.scale_factor
-        coin.vx = avg_dx * throw_multiplier
-        coin.vy = avg_dy * throw_multiplier
+        coin.is_moving = True
         coin._select_flying_animation()
         coin.anim_index = 0
         if coin.anim:

@@ -35,9 +35,9 @@ class Tornado(PygameSprite):
         self.frame_index = 0
         self.anim_timer = 0.0
 
-        self.pull_radius = (world_width / 6.0) * world_scale
-        self.pull_strength = 1000.0 * world_scale
-        self.spin_strength = 500.0 * world_scale
+        self.pull_radius = (world_width / 4.0) * world_scale
+        self.pull_strength = 1250.0 * world_scale
+        self.spin_strength = 750.0 * world_scale
 
         self.fade_duration = 0.5
 
@@ -99,22 +99,20 @@ class Tornado(PygameSprite):
             # ВЫШЛА ИЗ РАДИУСА
             if coin.tornado_hit:
                 coin.tornado_hit = False
-
-                coin.vx *= 0.8
+                # Убираем is_moving = False, чтобы монетка летела по инерции
+                coin.vx *= 0.8 # Оставляем физике трения
                 coin.vy *= 0.8
 
-                coin.is_moving = False
                 coin.anim = []
                 coin.landed = True
                 coin.just_landed = True
                 coin.manual_override = False
-
                 coin.tornado_exit_time = 1.5
 
                 if coin.fixed_outcome_texture:
-                    coin.sprite.texture = coin.fixed_outcome_texture
+                     coin.sprite.texture = coin.fixed_outcome_texture
                 else:
-                    coin.sprite.texture = coin.sprites.get("heads")
+                     coin.sprite.texture = coin.sprites.get("heads")
 
     def draw(self, surface, screen_height) -> None:
         super().draw(surface, screen_height)
