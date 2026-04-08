@@ -10,7 +10,8 @@ from logic.controllers.ui_controller import UIController
 from logic.controllers.game_controller import GameController
 from logic.assets.sprite_pygame import PygameSprite
 
-from localization import get_text, toggle_language, current_lang
+# ВАЖНО: Импортируем модуль целиком, чтобы видеть изменения current_lang
+import localization
 
 # --- КОНСТАНТЫ ---
 VIRTUAL_WIDTH = 1920
@@ -188,8 +189,8 @@ def main():
     btn_sound_rect = pygame.Rect(VIRTUAL_WIDTH - (settings_btn_w * 2) - (settings_margin * 2), settings_margin,
                                  settings_btn_w, settings_btn_h)
 
-    # Кнопки настроек в ИГРЕ
-    game_btn_w = 50
+    # Кнопки настроек в ИГРЕ (увеличил ширину до 110, чтобы влез "SOUND: OFF")
+    game_btn_w = 110
     game_btn_h = 50
     game_btn_margin = 20
     game_mute_rect = pygame.Rect(VIRTUAL_WIDTH - game_btn_w - game_btn_margin, game_btn_margin, game_btn_w, game_btn_h)
@@ -205,7 +206,6 @@ def main():
         dt = clock.tick(FPS) / 1000.0
         if dt > 0.1: dt = 0.1
 
-        # ВАЖНО: Расчет координат мыши должен быть В НАЧАЛЕ цикла, чтобы vmx/vmy были доступны везде
         mx, my = pygame.mouse.get_pos()
         vmx = mx * (VIRTUAL_WIDTH / screen.get_width())
         vmy = my * (VIRTUAL_HEIGHT / screen.get_height())
@@ -233,7 +233,7 @@ def main():
                         elif btn_help_rect.collidepoint(vmx, vmy):
                             show_help = True
                         elif btn_lang_rect.collidepoint(vmx, vmy):
-                            toggle_language()
+                            localization.toggle_language()
                             ui.reload_texts()
                             spawn_menu_coins()
                         elif btn_sound_rect.collidepoint(vmx, vmy):
@@ -242,11 +242,11 @@ def main():
                 elif state == STATE_GAME:
                     logic_y = VIRTUAL_HEIGHT - vmy
                     if event.button == pygame.BUTTON_LEFT:
-                        # Проверка кнопок в игре
+                        # Проверка кнопок настроек в ИГРЕ
                         if game_mute_rect.collidepoint(vmx, vmy):
                             sound_manager.toggle_mute()
                         elif game_lang_rect.collidepoint(vmx, vmy):
-                            toggle_language()
+                            localization.toggle_language()
                             ui.reload_texts()
                         elif vmx > WORLD_WIDTH:
                             ui.on_mouse_press(vmx, vmy)
@@ -263,13 +263,15 @@ def main():
                         game.on_mouse_release_rmb(vmx, logic_y)
                     elif event.button == pygame.BUTTON_LEFT:
                         if vmx > WORLD_WIDTH:
-                            upgrade_id = ui.on_mouse_release(vmx, vmy)
-                            if upgrade_id:
-                                if upgrade_id == "finish_game":
-                                    game.save_game()
-                                    running = False
-                                else:
-                                    game.try_buy_upgrade(upgrade_id)
+                            # Не обрабатываем клик по настройкам здесь
+                            if not (game_mute_rect.collidepoint(vmx, vmy) or game_lang_rect.collidepoint(vmx, vmy)):
+                                upgrade_id = ui.on_mouse_release(vmx, vmy)
+                                if upgrade_id:
+                                    if upgrade_id == "finish_game":
+                                        game.save_game()
+                                        running = False
+                                    else:
+                                        game.try_buy_upgrade(upgrade_id)
 
             elif event.type == pygame.MOUSEMOTION:
                 if state == STATE_GAME:
@@ -309,11 +311,12 @@ def main():
             canvas.blit(overlay, (0, 0))
 
             if not show_help:
-                title_surf = title_font.render(get_text("menu_title"), True, (0, 0, 0))
+                title_surf = title_font.render(localization.get_text("menu_title"), True, (0, 0, 0))
                 title_rect = title_surf.get_rect(center=(VIRTUAL_WIDTH // 2, VIRTUAL_HEIGHT * 0.2))
                 canvas.blit(title_surf, title_rect)
 
-                buttons = [(btn_play_rect, get_text("btn_play")), (btn_help_rect, get_text("btn_help"))]
+                buttons = [(btn_play_rect, localization.get_text("btn_play")),
+                           (btn_help_rect, localization.get_text("btn_help"))]
                 for rect, text in buttons:
                     color = (100, 100, 100) if rect.collidepoint(vmx, vmy) else (50, 50, 50)
                     pygame.draw.rect(canvas, color, rect, border_radius=5)
@@ -322,13 +325,19 @@ def main():
                     txt_rect = txt_surf.get_rect(center=rect.center)
                     canvas.blit(txt_surf, txt_rect)
 
-                # Кнопки настроек (Язык, Звук)
-                for rect, text_key in [(btn_lang_rect, "lang_" + current_lang),
-                                       (btn_sound_rect, "sound_on" if not sound_manager.muted else "sound_off")]:
+                # Кнопки настроек в МЕНЮ
+                # Используем localization.current_lang напрямую
+                lang_key = "lang_" + localization.current_lang
+                lang_text = localization.get_text(lang_key)
+
+                sound_state = "ON" if not sound_manager.muted else "OFF"
+                sound_text_final = f"SOUND: {sound_state}"
+
+                for rect, text in [(btn_lang_rect, lang_text), (btn_sound_rect, sound_text_final)]:
                     color = (70, 70, 70) if rect.collidepoint(vmx, vmy) else (50, 50, 50)
                     pygame.draw.rect(canvas, color, rect, border_radius=5)
                     pygame.draw.rect(canvas, (150, 150, 150), rect, 2, border_radius=5)
-                    txt_surf = main_font.render(get_text(text_key), True, (255, 255, 255))
+                    txt_surf = main_font.render(text, True, (255, 255, 255))
                     txt_rect = txt_surf.get_rect(center=rect.center)
                     canvas.blit(txt_surf, txt_rect)
 
@@ -339,10 +348,10 @@ def main():
                 pygame.draw.rect(canvas, (255, 255, 255), (help_x, help_y, help_w, help_h), 2)
 
                 help_lines = [
-                    get_text("help_goal"), get_text("help_goal_text"), "",
-                    get_text("help_gameplay"), get_text("help_gameplay_text"), "",
-                    get_text("help_fusion"), get_text("help_fusion_text"), "",
-                    get_text("help_luck")
+                    localization.get_text("help_goal"), localization.get_text("help_goal_text"), "",
+                    localization.get_text("help_gameplay"), localization.get_text("help_gameplay_text"), "",
+                    localization.get_text("help_fusion"), localization.get_text("help_fusion_text"), "",
+                    localization.get_text("help_luck")
                 ]
 
                 clip_rect = pygame.Rect(help_x, help_y, help_w, help_h)
@@ -367,36 +376,38 @@ def main():
                 close_rect = pygame.Rect(help_x + help_w - close_btn_size - 10, help_y + 10, close_btn_size,
                                          close_btn_size)
                 pygame.draw.rect(canvas, (200, 50, 50), close_rect, border_radius=5)
-                x_surf = main_font.render(get_text("btn_close"), True, (255, 255, 255))
+                x_surf = main_font.render(localization.get_text("btn_close"), True, (255, 255, 255))
                 canvas.blit(x_surf, x_surf.get_rect(center=close_rect.center))
 
         elif state == STATE_GAME:
-            # --- Отрисовка кнопок в ИГРЕ ---
+            # 1. Рисуем игру
+            game.draw(canvas, VIRTUAL_HEIGHT)
 
-            # Кнопка Языка (показывает целевой язык)
-            next_lang = "en" if current_lang == "ru" else "ru"
-            lang_btn_text = get_text(f"lang_{next_lang}")
-            lang_color = (50, 50, 50)
-            if game_lang_rect.collidepoint(vmx, vmy):
-                lang_color = (70, 70, 70)
+            # 2. Рисуем панель интерфейса
+            ui.draw(canvas, VIRTUAL_HEIGHT, game.balance.get())
+
+            # 3. Рисуем кнопки настроек ПОВЕРХ панели
+
+            # --- Кнопка Языка ---
+            # Динамически получаем текущий язык из модуля
+            lang_key = "lang_" + localization.current_lang
+            lang_text = localization.get_text(lang_key)  # "RU" или "EN"
+
+            lang_color = (80, 80, 80) if game_lang_rect.collidepoint(vmx, vmy) else (60, 60, 60)
             pygame.draw.rect(canvas, lang_color, game_lang_rect, border_radius=5)
-            pygame.draw.rect(canvas, (200, 200, 200), game_lang_rect, 2, border_radius=5)
-            lang_surf = main_font.render(lang_btn_text, True, (255, 255, 255))
+            pygame.draw.rect(canvas, (150, 150, 150), game_lang_rect, 2, border_radius=5)
+            lang_surf = main_font.render(lang_text, True, (255, 255, 255))
             canvas.blit(lang_surf, lang_surf.get_rect(center=game_lang_rect.center))
 
-            # Кнопка Звука
-            sound_color = (50, 50, 50)
-            if game_mute_rect.collidepoint(vmx, vmy):
-                sound_color = (70, 70, 70)
-            pygame.draw.rect(canvas, sound_color, game_mute_rect, border_radius=5)
-            pygame.draw.rect(canvas, (200, 200, 200), game_mute_rect, 2, border_radius=5)
-            sound_status_text = "ON" if not sound_manager.muted else "OFF"
-            sound_surf = main_font.render(sound_status_text, True, (255, 255, 255))
-            canvas.blit(sound_surf, sound_surf.get_rect(center=game_mute_rect.center))
+            # --- Кнопка Звука ---
+            sound_state = "ON" if not sound_manager.muted else "OFF"
+            sound_text = f"SOUND: {sound_state}"
 
-            # --- Сама игра ---
-            game.draw(canvas, VIRTUAL_HEIGHT)
-            ui.draw(canvas, VIRTUAL_HEIGHT, game.balance.get())
+            sound_color = (80, 80, 80) if game_mute_rect.collidepoint(vmx, vmy) else (60, 60, 60)
+            pygame.draw.rect(canvas, sound_color, game_mute_rect, border_radius=5)
+            pygame.draw.rect(canvas, (150, 150, 150), game_mute_rect, 2, border_radius=5)
+            sound_surf = main_font.render(sound_text, True, (255, 255, 255))
+            canvas.blit(sound_surf, sound_surf.get_rect(center=game_mute_rect.center))
 
         pygame.transform.smoothscale(canvas, (screen.get_width(), screen.get_height()), screen)
         pygame.display.flip()

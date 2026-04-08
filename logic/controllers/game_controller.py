@@ -1778,7 +1778,14 @@ class GameController:
         self.tornado_list.append(self.tornado)
 
     def get_coin_counts(self) -> dict:
-        counts = {"bronze": 0, "silver": 0, "gold": 0}
+        counts = {
+            "bronze": 0, "silver": 0, "gold": 0,
+            # Добавляем данные о слияниях для UI
+            "silver_fusions": self.silver_fusions_count,
+            "max_silver_fusions": self.max_silver_fusions,
+            "gold_fusions": self.gold_fusions_count,
+            "max_gold_fusions": self.max_gold_fusions
+        }
         for coin in self.coins:
             if isinstance(coin, BronzeCoin):
                 counts["bronze"] += 1
@@ -1870,15 +1877,8 @@ class GameController:
             self.balance.add(amount)
 
     def _update_fusion_buttons(self):
-        """Обновляет текст кнопок слияния с текущим прогрессом"""
-        if self.silver_fusions_count < self.max_silver_fusions:
-            name = f"Слияние в серебро ({self.silver_fusions_count}/{self.max_silver_fusions})"
-            self.ui.update_button("fuse_to_silver", 0, name=name)
-        else:
-            self.ui.set_button_disabled("fuse_to_silver", f"Слияние в серебро (Макс. {self.max_silver_fusions})")
-
-        if self.gold_fusions_count < self.max_gold_fusions:
-            name = f"Слияние в золото ({self.gold_fusions_count}/{self.max_gold_fusions})"
-            self.ui.update_button("fuse_to_gold", 0, name=name)
-        else:
-            self.ui.set_button_disabled("fuse_to_gold", f"Слияние в золото (Макс. {self.max_gold_fusions})")
+        """Обновляет состояние кнопок слияния в UI, убрали установку русского текста."""
+        # Теперь UI сам формирует текст на основе данных из get_coin_counts
+        # Эта функция остается пустой или можно удалить её вызовы,
+        # но для безопасности оставим её пустой, чтобы не ломать вызовы из load_game/reset_game.
+        pass
