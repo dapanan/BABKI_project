@@ -553,12 +553,11 @@ class GameController:
                         self.spawn_tornado()
                         self.tornado_respawn_timer = 0.0
 
-            # === ЖУК ===
             if self.beetle:
                 is_alive = self.beetle.update(dt, width, height)
                 if is_alive is False:
                     self.beetle = None
-                    self.beetle_respawn_interval = random.uniform(240.0, 300.0)
+                    self.beetle_respawn_interval = random.uniform(240.0, 300.0)  # 4-5 минут
                     self.beetle_respawn_timer = 0.0
             else:
                 self.beetle_respawn_timer += dt
@@ -780,7 +779,8 @@ class GameController:
             self.ui.update_meteor_state(self.meteor_unlocked)
             self.ui.update_combo_unlocked_state(self.combo_unlocked)
 
-            # Обновляем UI Престижа каждый кадр
+            # === ВАЖНО: Обновление кнопки престижа каждый кадр ===
+            # Это решает проблему, когда кнопка не обновляется при изменении баланса
             self._update_prestige_ui()
 
             if self.shake_timer > 0:

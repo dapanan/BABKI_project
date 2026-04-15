@@ -152,6 +152,8 @@ class UIController:
                 _UiButtonStub("new_game", "", "btn_new_game", 0, is_one_time=True),
                 # Кнопка Победы
                 _UiButtonStub("buy_victory", "", "btn_victory", 10_000_000_000_000_000_000_000_000, is_one_time=True),
+                # НОВАЯ КНОПКА: Выход в меню
+                _UiButtonStub("exit_to_menu", "", "btn_exit_menu", 0, is_one_time=True),
             ]),
         ]
 
@@ -268,6 +270,12 @@ class UIController:
 
                     if b.upgrade_id == "prestige":
                         continue  # Управляется отдельным методом
+
+                    # === НОВОЕ: Логика для кнопки выхода ===
+                    if b.upgrade_id == "exit_to_menu":
+                        self._enabled[b.upgrade_id] = True
+                        b.title = btn_name
+                        continue
 
                     if b.max_level > 0 and b.level >= b.max_level:
                         b.title = f"{btn_name} ({get_text('status_max')})"
