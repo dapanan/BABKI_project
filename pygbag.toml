@@ -1,0 +1,9 @@
+[build]
+# Указываем папки с картинками и звуками, чтобы Pygbag их упаковал
+assets_dirs = [ "view" ]
+
+# Игнорируем лишнее
+ignore_dirs = [ ".venv", ".idea", ".git", "build", "__pycache__" ]
+
+# Указываем точку входа (по умолчанию main.py, но можно явно)
+entry_point = "main.py"

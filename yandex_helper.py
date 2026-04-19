@@ -2,12 +2,12 @@
 import localization
 import sys
 import time
+import asyncio # Используем асинхронность вместо threading
 
 # Пытаемся импортировать JS мост
 try:
     import js
     import pyodide
-
     IS_BROWSER = True
 except ImportError:
     IS_BROWSER = False
@@ -72,20 +72,19 @@ def show_rewarded_ad():
             print(f"Rewarded call error: {e}")
     else:
         # === СИМУЛЯЦИЯ ДЛЯ ТЕСТОВ НА ПК ===
-        # Если мы не в браузере, просто ждем 1 секунду и даем награду
         print("LOCAL TEST: Simulating ad reward in 1 sec...")
-        import threading
-        def mock_reward():
-            time.sleep(1)
+        # Асинхронный сон в асинхронной среде
+        async def mock_reward():
+            await asyncio.sleep(1)
             on_ad_opened()
-            time.sleep(0.5)
+            await asyncio.sleep(0.5)
             on_ad_closed()
             # Принудительно ставим флаг награды
             global reward_ready
             reward_ready = True
 
-        t = threading.Thread(target=mock_reward)
-        t.start()
+        # Запускаем задачу
+        asyncio.create_task(mock_reward())
 
 
 def check_ad_pause():

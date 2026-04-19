@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 current_lang = "ru"
 
 TEXTS = {

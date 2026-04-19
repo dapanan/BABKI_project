@@ -456,7 +456,7 @@ class UIController:
             grp_rect = grp_surf.get_rect(centerx=self.panel_x + self.panel_width // 2, y=current_draw_y + 10)
             surface.blit(grp_surf, grp_rect)
 
-            pygame.draw.line(surface, (100, 100, 100), (self.panel_x + self.padding, current_draw_y + 35),
+            pygame.draw.line(surface, (180, 180, 180), (self.panel_x + self.padding, current_draw_y + 35),
                              (self.panel_x + self.panel_width - self.padding, current_draw_y + 35), 1)
 
             current_draw_y += self.group_header_height
@@ -488,7 +488,7 @@ class UIController:
                     pygame.draw.rect(surface, (50, 50, 50),
                                      (self.panel_x + self.padding, y_draw, btn_w, self.btn_height), 1)
 
-                color = (50, 50, 50) if enabled else (100, 100, 100)
+                color = (50, 50, 50) if enabled else (180, 180, 180)
                 text_surf = btn_font.render(b.title, True, color)
 
                 # === ЦЕНТРИРОВАНИЕ ТЕКСТА КНОПКИ ===

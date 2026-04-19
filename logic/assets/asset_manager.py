@@ -2,28 +2,36 @@ from __future__ import annotations
 import os
 import sys
 import pygame
+import platform
 
-
-# import arcade # УБРАЛИ
 
 class AssetManager:
     def __init__(self) -> None:
-        if getattr(sys, 'frozen', False):
+        # Universal path detection
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            # PyInstaller (EXE)
             self.base_dir = os.path.join(sys._MEIPASS, "view")
+        elif platform.system() == "Emscripten":
+            # Pygbag (Browser)
+            self.base_dir = "view"
         else:
+            # Local run (Python script)
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            project_root = os.path.dirname(os.path.dirname(script_dir))
-            self.base_dir = os.path.join(project_root, "view")
+            project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_dir)))
+            temp_dir = os.path.join(project_root, "view")
+            if os.path.exists(temp_dir):
+                self.base_dir = temp_dir
+            else:
+                self.base_dir = "view"
 
         print(f"DEBUG: Assets base directory: {self.base_dir}")
 
         if not os.path.exists(self.base_dir):
-            print(f"FATAL ERROR: View directory not found at {self.base_dir}")
-            self.base_dir = os.getcwd()
+            print(f"WARNING: Directory check failed at init for {self.base_dir}")
 
         self._loaded = False
 
-        # Вместо arcade.Texture будем хранить pygame.Surface
+        # Store pygame.Surface instead of arcade.Texture
         self.bronze_coin_sprites: dict[str, list[pygame.Surface] | pygame.Surface] = {}
         self.silver_coin_sprites: dict[str, list[pygame.Surface] | pygame.Surface] = {}
         self.gold_coin_sprites: dict[str, list[pygame.Surface] | pygame.Surface] = {}
@@ -38,7 +46,7 @@ class AssetManager:
 
     def load_all(self) -> None:
         print("Loading assets...")
-        # Цвета заменили на кортежи RGB
+        # Colors replaced with RGB tuples
         self._load_coin_type("bronze_coin", self.bronze_coin_sprites, (181, 166, 66))
         self._load_coin_type("silver_coin", self.silver_coin_sprites, (192, 192, 192))
         self._load_coin_type("gold_coin", self.gold_coin_sprites, (255, 215, 0))
@@ -148,11 +156,9 @@ class AssetManager:
                 return []
             files = sorted(os.listdir(path))
 
-            # --- ДОБАВИТЬ ЭТОТ ОТЛАДОЧНЫЙ ВЫВОД ---
             if folder_name == "silver_coin" and name in ["up", "down"]:
-                print(f"DEBUG: Загружаю анимацию {name} для серебряной монеты из: {path}")
-                print(f"DEBUG: Найдены файлы: {files}")
-            # ------------------------------------
+                print(f"DEBUG: Loading animation {name} for silver coin from: {path}")
+                print(f"DEBUG: Files found: {files}")
 
             return [
                 pygame.image.load(os.path.join(path, f)).convert_alpha()
@@ -175,27 +181,25 @@ class AssetManager:
         if os.path.exists(tails_path):
             tails_tex = pygame.image.load(tails_path).convert_alpha()
 
-        # Загружаем направления
         up_list = load_dir("up")
         down_list = load_dir("down")
         left_list = load_dir("left")
         right_list = load_dir("right")
-        # ... остальные направления
 
-        # ЗАЩИТА: Если какая-то папка пуста, используем heads_tex, чтобы не было пустого списка
         if not up_list: up_list = [heads_tex]
         if not down_list: down_list = [heads_tex]
         if not left_list: left_list = [heads_tex]
         if not right_list: right_list = [heads_tex]
 
-        # Аналогично для диагоналей
         up_left_list = load_dir("up_left")
         down_left_list = load_dir("down_left")
         up_right_list = load_dir("up_right")
         down_right_list = load_dir("down_right")
 
         if not up_left_list: up_left_list = [heads_tex]
-        # ... и так далее для всех диагоналей
+        if not down_left_list: down_left_list = [heads_tex]
+        if not up_right_list: up_right_list = [heads_tex]
+        if not down_right_list: down_right_list = [heads_tex]
 
         target_dict.update({
             "up": up_list,
@@ -206,46 +210,6 @@ class AssetManager:
             "up_right": up_right_list,
             "down_left": down_left_list,
             "down_right": down_right_list,
-            "heads": heads_tex,
-            "tails": tails_tex,
-        })
-        print(f"  -> Loaded sprites for {folder_name}")
-
-        def load_dir(name: str) -> list[pygame.Surface]:
-            path = os.path.join(sprites_dir, name)
-            if not os.path.exists(path):
-                return []
-            files = sorted(os.listdir(path))
-            return [
-                pygame.image.load(os.path.join(path, f)).convert_alpha()
-                for f in files if f.endswith(".png")
-            ]
-
-        short_name = folder_name.replace("_coin", "")
-        heads_file = f"{short_name}_heads.png"
-        tails_file = f"{short_name}_tails.png"
-
-        heads_path = os.path.join(sprites_dir, "heads", heads_file)
-        tails_path = os.path.join(sprites_dir, "tails", tails_file)
-
-        heads_tex = self._create_placeholder_surface(placeholder_color)
-        tails_tex = self._create_placeholder_surface((0, 0, 255))
-
-        if os.path.exists(heads_path):
-            heads_tex = pygame.image.load(heads_path).convert_alpha()
-
-        if os.path.exists(tails_path):
-            tails_tex = pygame.image.load(tails_path).convert_alpha()
-
-        target_dict.update({
-            "up": load_dir("up"),
-            "down": load_dir("down"),
-            "left": load_dir("left"),
-            "right": load_dir("right"),
-            "up_left": load_dir("up_left"),
-            "up_right": load_dir("up_right"),
-            "down_left": load_dir("down_left"),
-            "down_right": load_dir("down_right"),
             "heads": heads_tex,
             "tails": tails_tex,
         })
@@ -312,7 +276,7 @@ class AssetManager:
             print(f"  -> WARNING: Tornado folder not found at {tornado_dir}")
 
     def _generate_tinted_coins(self, target_name: str, source_sprites: dict, tint_color: tuple) -> None:
-        """Создает копии спрайтов с наложенным цветом через BLEND_MULT"""
+        """Creates copies of sprites with tint applied via BLEND_MULT"""
         target_dict = {}
         for key in ["heads", "tails"]:
             if key in source_sprites:
@@ -333,13 +297,9 @@ class AssetManager:
             self.cursed_coin_sprites = target_dict
 
     def _create_tinted_texture(self, source_surface: pygame.Surface, tint_color: tuple) -> pygame.Surface:
-        """Перекрашивает текстуру, сохраняя тени (альфа-канал и яркость)"""
-        # Создаем копию
+        """Tints texture preserving shadows (alpha and brightness)"""
         tinted = source_surface.copy()
-        # Создаем поверхность цвета
         color_surface = pygame.Surface(tinted.get_size(), pygame.SRCALPHA)
         color_surface.fill(tint_color)
-        # Накладываем цвет с флагом умножения (R = R_src * R_color / 255)
-        # Это сохраняет тени оригинала, но меняет оттенок
         tinted.blit(color_surface, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         return tinted
